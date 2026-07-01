@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes — Gestão para Oficina Mecânica</title>
+<style>
+  :root{
+    --petroleo:#0F3D57;
+    --petroleo-2:#0b2f44;
+    --laranja:#F26522;
+    --laranja-2:#d9541a;
+    --grafite:#1E2A33;
+    --cinza:#F4F6F8;
+    --verde:#2FB37A;
+    --vermelho:#E24C4B;
+    --amarelo:#E8A100;
+    --borda:#e2e8ee;
+    --txt:#1E2A33;
+    --txt-2:#5b6b78;
+    --branco:#ffffff;
+    --sombra:0 1px 3px rgba(15,61,87,.08),0 4px 12px rgba(15,61,87,.06);
+    --raio:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:'Inter','Segoe UI',Roboto,system-ui,-apple-system,sans-serif;
+    background:var(--cinza);
+    color:var(--txt);
+    font-size:14px;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:inherit;cursor:pointer;border:none;background:none}
+  input,select,textarea{font-family:inherit;font-size:14px}
+
+  /* ===== LOGIN ===== */
+  #login{
+    position:fixed;inset:0;z-index:100;
+    display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,var(--petroleo) 0%,var(--petroleo-2) 100%);
+  }
+  .login-card{
+    background:var(--branco);border-radius:20px;padding:40px;
+    width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center;
+  }
+  .brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:6px}
+  .logo-mark{
+    width:46px;height:46px;border-radius:12px;
+    background:var(--laranja);display:flex;align-items:center;justify-content:center;
+    color:#fff;font-weight:800;font-size:22px;box-shadow:0 6px 16px rgba(242,101,34,.4);
+  }
+  .logo-mark svg{width:28px;height:28px}
+  .brand h1{font-size:26px;color:var(--petroleo);letter-spacing:.5px}
+  .login-sub{color:var(--txt-2);margin-bottom:26px;font-size:13px}
+  .login-card label{display:block;text-align:left;font-size:12px;font-weight:600;color:var(--txt-2);margin:14px 0 6px}
+  .login-card input, .login-card select{
+    width:100%;padding:12px 14px;border:1.5px solid var(--borda);border-radius:10px;outline:none;
+  }
+  .login-card input:focus, .login-card select:focus{border-color:var(--laranja)}
+  .btn-login{
+    width:100%;margin-top:22px;background:var(--laranja);color:#fff;
+    padding:14px;border-radius:10px;font-weight:700;font-size:15px;
+    box-shadow:0 6px 16px rgba(242,101,34,.35);transition:.15s;
+  }
+  .btn-login:hover{background:var(--laranja-2)}
+  .login-hint{margin-top:16px;font-size:11px;color:var(--txt-2)}
+
+  /* ===== LAYOUT ===== */
+  #app{display:none;height:100vh;grid-template-columns:238px 1fr;grid-template-rows:64px 1fr}
+  #app.show{display:grid}
+
+  .sidebar{
+    grid-row:1 / span 2;background:var(--petroleo);color:#cfe0ea;
+    display:flex;flex-direction:column;overflow-y:auto;
+  }
+  .sidebar::-webkit-scrollbar{width:6px}
+  .sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
+  .side-brand{
+    display:flex;align-items:center;gap:11px;padding:16px 18px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  .side-brand .logo-mark{width:38px;height:38px;font-size:18px;border-radius:10px}
+  .side-brand .logo-mark svg{width:22px;height:22px}
+  .side-brand .name{font-size:20px;font-weight:800;color:#fff;letter-spacing:.5px}
+  .side-brand .tag{font-size:10px;color:#8fb0c4;display:block;margin-top:-2px}
+  .nav-group{padding:14px 14px 4px}
+  .nav-group-title{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6f95ab;padding:0 8px 6px;font-weight:700}
+  .nav-item{
+    display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:9px;
+    color:#cfe0ea;font-weight:500;font-size:14px;width:100%;text-align:left;transition:.12s;position:relative;
+  }
+  .nav-item .ic{width:20px;text-align:center;font-size:16px}
+  .nav-item:hover{background:rgba(255,255,255,.07);color:#fff}
+  .nav-item.active{background:var(--laranja);color:#fff;box-shadow:0 4px 12px rgba(242,101,34,.35)}
+  .nav-item .badge{margin-left:auto;background:var(--vermelho);color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px}
+  .nav-item.active .badge{background:rgba(255,255,255,.25)}
+
+  .topbar{
+    grid-column:2;background:var(--branco);border-bottom:1px solid var(--borda);
+    display:flex;align-items:center;gap:16px;padding:0 24px;box-shadow:var(--sombra);z-index:5;
+  }
+  .search{
+    flex:1;max-width:520px;display:flex;align-items:center;gap:10px;
+    background:var(--cinza);border:1.5px solid transparent;border-radius:10px;padding:10px 14px;
+  }
+  .search:focus-within{border-color:var(--laranja);background:#fff}
+  .search input{border:none;background:none;outline:none;flex:1;font-size:14px}
+  .search .ic{color:var(--txt-2);font-size:16px}
+  .topbar-actions{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .icon-btn{
+    width:40px;height:40px;border-radius:10px;background:var(--cinza);
+    display:flex;align-items:center;justify-content:center;font-size:16px;position:relative;transition:.12s;
+  }
+  .icon-btn:hover{background:#e8ecf1}
+  .icon-btn .dot{position:absolute;top:9px;right:10px;width:8px;height:8px;background:var(--vermelho);border-radius:50%;border:2px solid #fff}
+  .user-chip{display:flex;align-items:center;gap:10px;padding-left:14px;border-left:1px solid var(--borda)}
+  .avatar{width:38px;height:38px;border-radius:50%;background:var(--petroleo);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+  .user-chip .u-name{font-weight:700;font-size:13px;line-height:1.1}
+  .user-chip .u-role{font-size:11px;color:var(--txt-2)}
+
+  .main{grid-column:2;overflow-y:auto;padding:26px 28px}
+
+  /* ===== COMPONENTES ===== */
+  .page-head{display:flex;align-items:center;margin-bottom:22px;gap:16px;flex-wrap:wrap}
+  .page-head h2{font-size:24px;color:var(--petroleo);font-weight:800}
+  .page-head p{color:var(--txt-2);font-size:13px;margin-top:2px}
+  .page-head .spacer{flex:1}
+
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border-radius:10px;
+    font-weight:700;font-size:14px;transition:.14s;white-space:nowrap;
+  }
+  .btn-primary{background:var(--laranja);color:#fff;box-shadow:0 4px 12px rgba(242,101,34,.3)}
+  .btn-primary:hover{background:var(--laranja-2)}
+  .btn-ghost{background:#fff;color:var(--petroleo);border:1.5px solid var(--borda)}
+  .btn-ghost:hover{border-color:var(--petroleo);background:var(--cinza)}
+  .btn-sm{padding:7px 12px;font-size:12.5px;border-radius:8px}
+  .btn-success{background:var(--verde);color:#fff}
+  .btn-success:hover{filter:brightness(.94)}
+
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+  .stat{
+    background:#fff;border-radius:var(--raio);padding:18px;box-shadow:var(--sombra);
+    border:1px solid var(--borda);position:relative;overflow:hidden;
+  }
+  .stat .s-ic{
+    position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:12px;
+    display:flex;align-items:center;justify-content:center;font-size:20px;
+  }
+  .stat .s-label{font-size:12.5px;color:var(--txt-2);font-weight:600}
+  .stat .s-val{font-size:28px;font-weight:800;color:var(--grafite);margin-top:8px;line-height:1}
+  .stat .s-sub{font-size:11.5px;margin-top:8px;font-weight:600}
+  .up{color:var(--verde)} .down{color:var(--vermelho)}
+
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+
+  .panel{background:#fff;border-radius:var(--raio);box-shadow:var(--sombra);border:1px solid var(--borda);overflow:hidden}
+  .panel-head{display:flex;align-items:center;padding:16px 18px;border-bottom:1px solid var(--borda)}
+  .panel-head h3{font-size:15px;color:var(--petroleo);font-weight:800}
+  .panel-head .spacer{flex:1}
+  .panel-head a{color:var(--laranja);font-size:12.5px;font-weight:700;cursor:pointer}
+  .panel-body{padding:8px 18px 16px}
+
+  .list-row{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--cinza)}
+  .list-row:last-child{border-bottom:none}
+  .list-row .l-ic{width:38px;height:38px;border-radius:10px;background:var(--cinza);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+  .list-row .l-main{flex:1;min-width:0}
+  .list-row .l-title{font-weight:700;font-size:13.5px}
+  .list-row .l-sub{font-size:12px;color:var(--txt-2);margin-top:1px}
+  .list-row .l-right{text-align:right;font-size:12.5px;font-weight:700}
+
+  table{width:100%;border-collapse:collapse}
+  thead th{
+    text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;
+    color:var(--txt-2);font-weight:700;padding:12px 14px;border-bottom:1.5px solid var(--borda);
+  }
+  tbody td{padding:13px 14px;border-bottom:1px solid var(--cinza);font-size:13.5px}
+  tbody tr{transition:.1s}
+  tbody tr:hover{background:#fafcfd}
+  tbody tr:last-child td{border-bottom:none}
+  .t-strong{font-weight:700}
+  .t-mut{color:var(--txt-2);font-size:12.5px}
+
+  .badge2{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:20px}
+  .b-green{background:#e2f6ee;color:#1c8a5f}
+  .b-orange{background:#fdeee5;color:#c85410}
+  .b-blue{background:#e5eef4;color:#1a5a7d}
+  .b-red{background:#fce6e6;color:#c23b3a}
+  .b-yellow{background:#fbf3dc;color:#9a6d00}
+  .b-gray{background:#eef1f4;color:#5b6b78}
+  .dotb{width:7px;height:7px;border-radius:50%}
+
+  .plate{
+    display:inline-block;font-family:'Consolas',monospace;font-weight:800;letter-spacing:1px;
+    background:var(--grafite);color:#fff;padding:3px 9px;border-radius:5px;font-size:12.5px;
+    border:2px solid #3a4a56;
+  }
+  .avatar-sm{width:32px;height:32px;border-radius:50%;background:var(--petroleo);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+
+  .alert-box{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;margin-bottom:10px;font-size:13px;font-weight:600}
+  .alert-red{background:#fce6e6;color:#b53433}
+  .alert-yellow{background:#fbf3dc;color:#8a6100}
+  .alert-blue{background:#e5eef4;color:#1a5a7d}
+  .alert-box .a-ic{font-size:18px}
+
+  /* ===== ORÇAMENTO ===== */
+  .orc-layout{display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--txt-2);margin-bottom:6px}
+  .field input,.field select,.field textarea{
+    width:100%;padding:11px 13px;border:1.5px solid var(--borda);border-radius:9px;outline:none;background:#fff;
+  }
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--laranja)}
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .add-line{display:flex;gap:10px;align-items:flex-end;background:var(--cinza);padding:12px;border-radius:10px;margin-bottom:12px}
+  .add-line .field{flex:1;margin-bottom:0}
+  .item-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--cinza)}
+  .item-row .i-main{flex:1}
+  .item-row .i-name{font-weight:700;font-size:13.5px}
+  .item-row .i-meta{font-size:11.5px;color:var(--txt-2)}
+  .item-row .i-val{font-weight:700}
+  .item-row .i-del{color:var(--vermelho);font-size:16px;padding:4px 8px;border-radius:6px}
+  .item-row .i-del:hover{background:#fce6e6}
+  .empty{text-align:center;color:var(--txt-2);padding:24px;font-size:13px}
+
+  .resumo{position:sticky;top:0}
+  .resumo .line{display:flex;justify-content:space-between;padding:9px 0;font-size:14px}
+  .resumo .line.total{border-top:2px solid var(--borda);margin-top:6px;padding-top:14px;font-size:20px;font-weight:800;color:var(--petroleo)}
+  .resumo .disc input{width:90px;padding:6px 8px;border:1.5px solid var(--borda);border-radius:7px;text-align:right}
+
+  /* ===== MODAL ===== */
+  .modal-bg{position:fixed;inset:0;background:rgba(15,61,87,.5);z-index:50;display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-bg.show{display:flex}
+  .modal{background:#fff;border-radius:16px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .modal-head{display:flex;align-items:center;padding:20px 22px;border-bottom:1px solid var(--borda)}
+  .modal-head h3{font-size:18px;color:var(--petroleo);font-weight:800}
+  .modal-head .x{margin-left:auto;font-size:22px;color:var(--txt-2);width:34px;height:34px;border-radius:8px}
+  .modal-head .x:hover{background:var(--cinza)}
+  .modal-body{padding:22px}
+  .modal-foot{display:flex;gap:10px;justify-content:flex-end;padding:16px 22px;border-top:1px solid var(--borda)}
+
+  /* ===== TOAST ===== */
+  #toast{position:fixed;bottom:24px;right:24px;z-index:200;display:flex;flex-direction:column;gap:10px}
+  .toast{
+    background:var(--grafite);color:#fff;padding:14px 18px;border-radius:11px;
+    font-weight:600;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.25);
+    display:flex;align-items:center;gap:10px;animation:slideIn .3s ease;
+  }
+  .toast.ok{background:var(--verde)}
+  .toast.warn{background:var(--laranja)}
+  @keyframes slideIn{from{transform:translateX(30px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+  /* charts */
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .bar-row .b-label{width:110px;font-size:12.5px;font-weight:600}
+  .bar-track{flex:1;height:22px;background:var(--cinza);border-radius:6px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:6px;background:var(--petroleo);display:flex;align-items:center;padding-left:8px;color:#fff;font-size:11px;font-weight:700}
+  .bar-row .b-val{width:80px;text-align:right;font-weight:700;font-size:12.5px}
+
+  .config-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .swatch{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:var(--cinza)}
+  .swatch .sw{width:34px;height:34px;border-radius:8px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+  .hidden{display:none!important}
+  .mut{color:var(--txt-2)}
+  @media(max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.orc-layout{grid-template-columns:1fr}.grid-2,.grid-3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="login">
+  <div class="login-card">
+    <div class="brand">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      </div>
+      <h1>HERMES</h1>
+    </div>
+    <div class="login-sub">Gestão para Oficina Mecânica</div>
+    <label>Perfil de acesso</label>
+    <select id="loginRole">
+      <option value="Dono">Dono / Administrador</option>
+      <option value="Atendente">Atendente / Recepção</option>
+      <option value="Mecânico">Mecânico</option>
+    </select>
+    <label>Usuário</label>
+    <input type="text" value="admin" id="loginUser">
+    <label>Senha</label>
+    <input type="password" value="••••••" id="loginPass">
+    <button class="btn-login" onclick="doLogin()">Entrar no sistema</button>
+    <div class="login-hint">Protótipo de demonstração — Fase 1 · qualquer senha entra</div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="side-brand">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      </div>
+      <div>
+        <span class="name">HERMES</span>
+        <span class="tag">Gestão de Oficina</span>
+      </div>
+    </div>
+
+    <nav id="nav"></nav>
+  </aside>
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="search">
+      <span class="ic">🔍</span>
+      <input type="text" placeholder="Buscar placa, cliente ou OS..." id="globalSearch">
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" onclick="nav('orcamento');novoOrcamento()">+ Novo Orçamento</button>
+      <button class="icon-btn" title="Alertas"><span>🔔</span><span class="dot"></span></button>
+      <div class="user-chip">
+        <div class="avatar" id="topAvatar">DO</div>
+        <div>
+          <div class="u-name" id="topName">João (Dono)</div>
+          <div class="u-role" id="topRole">Administrador</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main" id="main"></main>
+</div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modal"></div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+/* =================== DADOS (memória) =================== */
+const DB = {
+  clientes:[
+    {id:1,nome:"Carlos Andrade",tipo:"PF",doc:"123.456.789-00",tel:"(11) 98877-1122",fiado:0},
+    {id:2,nome:"Transportes Silva ME",tipo:"PJ",doc:"12.345.678/0001-90",tel:"(11) 3344-5566",fiado:480},
+    {id:3,nome:"Mariana Costa",tipo:"PF",doc:"987.654.321-00",tel:"(11) 99123-4567",fiado:0},
+    {id:4,nome:"Pedro Henrique",tipo:"PF",doc:"456.123.789-00",tel:"(11) 98111-2233",fiado:0},
+    {id:5,nome:"Ana Beatriz Lima",tipo:"PF",doc:"321.654.987-00",tel:"(11) 97654-3210",fiado:150},
+  ],
+  carros:[
+    {id:1,clienteId:1,placa:"FKG-2B34",marca:"VW",modelo:"Gol 1.6",ano:2018,cor:"Prata",km:78500},
+    {id:2,clienteId:2,placa:"RTA-9021",marca:"Fiat",modelo:"Fiorino",ano:2020,cor:"Branco",km:120300},
+    {id:3,clienteId:3,placa:"HB20-778",marca:"Hyundai",modelo:"HB20",ano:2021,cor:"Preto",km:41200},
+    {id:4,clienteId:4,placa:"ONX-4512",marca:"Chevrolet",modelo:"Onix",ano:2019,cor:"Vermelho",km:63800},
+    {id:5,clienteId:5,placa:"FST-3300",marca:"Ford",modelo:"Fiesta",ano:2017,cor:"Azul",km:98100},
+  ],
+  servicos:[
+    {id:1,nome:"Troca de óleo + filtro",cat:"Motor",mo:80},
+    {id:2,nome:"Alinhamento e balanceamento",cat:"Suspensão",mo:120},
+    {id:3,nome:"Troca de pastilha de freio",cat:"Freios",mo:150},
+    {id:4,nome:"Revisão completa 20mil km",cat:"Revisão",mo:350},
+    {id:5,nome:"Troca de correia dentada",cat:"Motor",mo:400},
+    {id:6,nome:"Diagnóstico elétrico (scanner)",cat:"Elétrica",mo:90},
+    {id:7,nome:"Troca de embreagem",cat:"Transmissão",mo:600},
+  ],
+  pecas:[
+    {id:1,nome:"Óleo 5W30 Sintético (L)",sku:"OL-5W30",custo:22,venda:38,estoque:34,min:10,un:"L"},
+    {id:2,nome:"Filtro de óleo",sku:"FL-OLE",custo:14,venda:28,estoque:2,min:5,un:"un"},
+    {id:3,nome:"Pastilha de freio diant.",sku:"PF-DT",custo:60,venda:110,estoque:8,min:4,un:"par"},
+    {id:4,nome:"Filtro de ar",sku:"FL-AR",custo:18,venda:35,estoque:3,min:5,un:"un"},
+    {id:5,nome:"Correia dentada kit",sku:"CD-KIT",custo:180,venda:320,estoque:5,min:2,un:"kit"},
+    {id:6,nome:"Vela de ignição",sku:"VL-IGN",custo:12,venda:24,estoque:40,min:12,un:"un"},
+    {id:7,nome:"Disco de freio",sku:"DF-01",custo:95,venda:170,estoque:6,min:3,un:"un"},
+  ],
+  ordens:[
+    {id:142,clienteId:4,carroId:4,mecanico:"Pedro (Mecânico)",status:"Em execução",abertura:"01/07",prevista:"03/07",total:640,pago:false,itens:2},
+    {id:143,clienteId:5,carroId:5,mecanico:"Roberto (Mecânico)",status:"Aguardando peça",abertura:"30/06",prevista:"04/07",total:490,pago:false,itens:3},
+    {id:141,clienteId:1,carroId:1,mecanico:"Pedro (Mecânico)",status:"Concluída",abertura:"29/06",prevista:"30/06",total:118,pago:false,itens:2},
+    {id:140,clienteId:3,carroId:3,mecanico:"Roberto (Mecânico)",status:"Entregue",abertura:"28/06",prevista:"28/06",total:220,pago:true,itens:1},
+  ],
+  orcamentos:[
+    {id:"OR-088",clienteId:2,carroId:2,data:"01/07",validade:"16/07",status:"Enviado",total:720},
+    {id:"OR-087",clienteId:3,carroId:3,data:"30/06",validade:"15/07",status:"Aprovado",total:220},
+    {id:"OR-086",clienteId:1,carroId:1,data:"29/06",validade:"14/07",status:"Rascunho",total:118},
+  ],
+  agenda:[
+    {hora:"09:00",cliente:"Carlos Andrade",carro:"Gol",tipo:"Revisão",status:"Confirmada"},
+    {hora:"11:00",cliente:"Mariana Costa",carro:"HB20",tipo:"Freio",status:"Confirmada"},
+    {hora:"14:00",cliente:"Ana Beatriz",carro:"Fiesta",tipo:"Retorno (garantia)",status:"Agendada"},
+    {hora:"16:30",cliente:"Novo cliente",carro:"—",tipo:"Orçamento",status:"Agendada"},
+  ],
+  caixa:[
+    {data:"01/07",tipo:"entrada",desc:"OS #140 — Revisão HB20",forma:"PIX",valor:220,origem:"OS"},
+    {data:"01/07",tipo:"entrada",desc:"Venda balcão — Óleo 5W30",forma:"Dinheiro",valor:76,origem:"Venda"},
+    {data:"01/07",tipo:"saída",desc:"Compra filtros — Fornecedor AutoPeças",forma:"Boleto",valor:210,origem:"Despesa"},
+    {data:"30/06",tipo:"entrada",desc:"OS #139 — Alinhamento Onix",forma:"Cartão",valor:120,origem:"OS"},
+    {data:"30/06",tipo:"saída",desc:"Energia elétrica",forma:"Débito",valor:340,origem:"Despesa"},
+  ],
+  despesas:[
+    {data:"01/07",cat:"Compra de peça",desc:"Filtros e óleo",valor:210,rec:false,pago:true},
+    {data:"30/06",cat:"Energia",desc:"Conta de luz",valor:340,rec:true,pago:true},
+    {data:"05/07",cat:"Aluguel",desc:"Aluguel do galpão",valor:2800,rec:true,pago:false},
+    {data:"05/07",cat:"Salário",desc:"Mecânicos (2)",valor:5200,rec:true,pago:false},
+  ],
+};
+let seqOrc = 89;
+let seqOs = 144;
+
+/* =================== ESTADO =================== */
+let currentUser = {nome:"João",role:"Dono"};
+const orcAtual = {clienteId:null,carroId:null,servicos:[],pecas:[],desconto:0};
+
+/* =================== HELPERS =================== */
+const $ = s=>document.querySelector(s);
+const money = v=>"R$ "+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2});
+const cliente = id=>DB.clientes.find(c=>c.id==id)||{nome:"—"};
+const carro = id=>DB.carros.find(c=>c.id==id)||{placa:"—",modelo:"—"};
+const initials = n=>n.split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
+function toast(msg,type=""){
+  const t=document.createElement('div');
+  t.className='toast '+type;
+  t.innerHTML=(type==='ok'?'✅ ':type==='warn'?'⚠️ ':'💡 ')+msg;
+  $('#toast').appendChild(t);
+  setTimeout(()=>{t.style.opacity=0;t.style.transform='translateX(30px)';setTimeout(()=>t.remove(),300)},2600);
+}
+function openModal(html){$('#modal').innerHTML=html;$('#modalBg').classList.add('show')}
+function closeModal(){$('#modalBg').classList.remove('show')}
+$('#modalBg').addEventListener('click',e=>{if(e.target.id==='modalBg')closeModal()});
+
+/* =================== LOGIN =================== */
+function doLogin(){
+  const role=$('#loginRole').value;
+  const nome=role==='Dono'?'João':role==='Atendente'?'Marina':'Pedro';
+  currentUser={nome,role};
+  $('#topName').textContent=`${nome} (${role})`;
+  $('#topRole').textContent=role==='Dono'?'Administrador':role==='Atendente'?'Recepção':'Oficina';
+  $('#topAvatar').textContent=initials(nome);
+  $('#login').style.display='none';
+  $('#app').classList.add('show');
+  buildNav();
+  nav('inicio');
+  toast(`Bem-vindo, ${nome}!`,'ok');
+}
+
+/* =================== NAVEGAÇÃO =================== */
+const MENU=[
+  {g:"Principal",items:[
+    {id:'inicio',ic:'🏠',label:'Início'},
+  ]},
+  {g:"Cadastros",items:[
+    {id:'clientes',ic:'👥',label:'Clientes'},
+    {id:'carros',ic:'🚗',label:'Carros'},
+    {id:'servicos',ic:'🔧',label:'Serviços'},
+    {id:'estoque',ic:'📦',label:'Estoque',badge:'3'},
+  ]},
+  {g:"Operação",items:[
+    {id:'orcamento',ic:'📄',label:'Orçamentos'},
+    {id:'ordens',ic:'🛠️',label:'Ordens de Serviço'},
+    {id:'agenda',ic:'📅',label:'Agenda'},
+  ]},
+  {g:"Financeiro",items:[
+    {id:'caixa',ic:'💰',label:'Livro-Caixa'},
+    {id:'despesas',ic:'📉',label:'Despesas'},
+    {id:'relatorios',ic:'📊',label:'Relatórios'},
+  ]},
+  {g:"Sistema",items:[
+    {id:'config',ic:'⚙️',label:'Configurações'},
+  ]},
+];
+function buildNav(){
+  let h='';
+  MENU.forEach(grp=>{
+    h+=`<div class="nav-group"><div class="nav-group-title">${grp.g}</div>`;
+    grp.items.forEach(it=>{
+      h+=`<button class="nav-item" data-id="${it.id}" onclick="nav('${it.id}')">
+        <span class="ic">${it.ic}</span><span>${it.label}</span>
+        ${it.badge?`<span class="badge">${it.badge}</span>`:''}
+      </button>`;
+    });
+    h+='</div>';
+  });
+  $('#nav').innerHTML=h;
+}
+let currentView='inicio';
+function nav(view){
+  currentView=view;
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.id===view));
+  const fn=VIEWS[view];
+  $('#main').innerHTML = fn?fn():'<div class="empty">Em construção</div>';
+  $('#main').scrollTop=0;
+}
+
+/* =================== VIEWS =================== */
+const VIEWS={};
+
+/* ---------- INÍCIO / DASHBOARD ---------- */
+VIEWS.inicio=()=>{
+  const entradasHoje=DB.caixa.filter(c=>c.data==='01/07'&&c.tipo==='entrada').reduce((s,c)=>s+c.valor,0);
+  const saidasHoje=DB.caixa.filter(c=>c.data==='01/07'&&c.tipo==='saída').reduce((s,c)=>s+c.valor,0);
+  const osAbertas=DB.ordens.filter(o=>!['Entregue','Cancelada'].includes(o.status)).length;
+  const baixos=DB.pecas.filter(p=>p.estoque<=p.min);
+  return `
+  <div class="page-head">
+    <div><h2>Painel do dia</h2><p>Terça-feira, 01 de julho de 2026 · Bom dia, ${currentUser.nome}!</p></div>
+  </div>
+
+  <div class="cards">
+    <div class="stat">
+      <div class="s-ic" style="background:#e5eef4;color:var(--petroleo)">🛠️</div>
+      <div class="s-label">OS em aberto</div>
+      <div class="s-val">${osAbertas}</div>
+      <div class="s-sub"><span class="mut">2 aguardando peça</span></div>
+    </div>
+    <div class="stat">
+      <div class="s-ic" style="background:#e2f6ee;color:var(--verde)">💰</div>
+      <div class="s-label">Caixa de hoje</div>
+      <div class="s-val">${money(entradasHoje-saidasHoje)}</div>
+      <div class="s-sub"><span class="up">↑ ${money(entradasHoje)} entrou</span> · <span class="down">${money(saidasHoje)} saiu</span></div>
+    </div>
+    <div class="stat">
+      <div class="s-ic" style="background:#fdeee5;color:var(--laranja)">📄</div>
+      <div class="s-label">Orçamentos abertos</div>
+      <div class="s-val">${DB.orcamentos.filter(o=>o.status!=='Aprovado').length}</div>
+      <div class="s-sub"><span class="mut">1 aguardando aprovação</span></div>
+    </div>
+    <div class="stat">
+      <div class="s-ic" style="background:#fce6e6;color:var(--vermelho)">⚠️</div>
+      <div class="s-label">Peças em falta</div>
+      <div class="s-val">${baixos.length}</div>
+      <div class="s-sub"><span class="down">Reposição necessária</span></div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="panel">
+      <div class="panel-head"><h3>📅 Agenda de hoje</h3><div class="spacer"></div><a onclick="nav('agenda')">ver tudo</a></div>
+      <div class="panel-body">
+        ${DB.agenda.map(a=>`
+          <div class="list-row">
+            <div class="l-ic">${a.tipo.includes('garantia')?'🛡️':a.tipo==='Orçamento'?'📄':'🔧'}</div>
+            <div class="l-main"><div class="l-title">${a.hora} · ${a.cliente}</div><div class="l-sub">${a.carro} — ${a.tipo}</div></div>
+            <span class="badge2 ${a.status==='Confirmada'?'b-green':'b-yellow'}">${a.status}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h3>🛠️ OS em andamento</h3><div class="spacer"></div><a onclick="nav('ordens')">ver tudo</a></div>
+      <div class="panel-body">
+        ${DB.ordens.filter(o=>['Em execução','Aguardando peça','Concluída'].includes(o.status)).map(o=>`
+          <div class="list-row" style="cursor:pointer" onclick="nav('ordens')">
+            <div class="l-ic">🚗</div>
+            <div class="l-main">
+              <div class="l-title">#${o.id} · ${carro(o.carroId).modelo}</div>
+              <div class="l-sub">${o.mecanico.split(' ')[0]} · prev. ${o.prevista}</div>
+            </div>
+            <span class="badge2 ${statusColor(o.status)}">${o.status}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h3>🔔 Alertas</h3></div>
+      <div class="panel-body">
+        ${baixos.map(p=>`<div class="alert-box alert-red"><span class="a-ic">⚠️</span>${p.nome}: restam ${p.estoque} ${p.un}</div>`).join('')}
+        <div class="alert-box alert-yellow"><span class="a-ic">🔔</span>3 clientes com revisão vencida</div>
+        <div class="alert-box alert-blue"><span class="a-ic">💳</span>Transportes Silva: R$ 480 fiado em aberto</div>
+      </div>
+    </div>
+  </div>`;
+};
+function statusColor(s){
+  return {
+    'Em execução':'b-blue','Aguardando peça':'b-yellow','Concluída':'b-green',
+    'Entregue':'b-gray','Aberta':'b-blue','Cancelada':'b-red',
+    'Aprovado':'b-green','Enviado':'b-blue','Rascunho':'b-gray','Recusado':'b-red','Expirado':'b-red'
+  }[s]||'b-gray';
+}
+
+/* ---------- CLIENTES ---------- */
+VIEWS.clientes=()=>`
+  <div class="page-head">
+    <div><h2>Clientes</h2><p>${DB.clientes.length} clientes cadastrados</p></div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="modalCliente()">+ Novo cliente</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr><th>Cliente</th><th>Tipo</th><th>CPF / CNPJ</th><th>Telefone</th><th>Situação</th><th></th></tr></thead>
+      <tbody>
+        ${DB.clientes.map(c=>`<tr>
+          <td><div style="display:flex;align-items:center;gap:10px"><span class="avatar-sm">${initials(c.nome)}</span><span class="t-strong">${c.nome}</span></div></td>
+          <td><span class="badge2 b-gray">${c.tipo}</span></td>
+          <td class="t-mut">${c.doc}</td>
+          <td>${c.tel}</td>
+          <td>${c.fiado>0?`<span class="badge2 b-red">Fiado ${money(c.fiado)}</span>`:`<span class="badge2 b-green">Em dia</span>`}</td>
+          <td><button class="btn btn-ghost btn-sm" onclick="verCliente(${c.id})">Histórico</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+function verCliente(id){
+  const c=cliente(id);
+  const carros=DB.carros.filter(x=>x.clienteId==id);
+  openModal(`
+    <div class="modal-head"><h3>${c.nome}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="grid-2" style="margin-bottom:16px">
+        <div><div class="t-mut">Documento</div><div class="t-strong">${c.doc}</div></div>
+        <div><div class="t-mut">Telefone</div><div class="t-strong">${c.tel}</div></div>
+      </div>
+      <h3 style="color:var(--petroleo);font-size:14px;margin-bottom:10px">🚗 Veículos (${carros.length})</h3>
+      ${carros.map(v=>`<div class="list-row"><div class="l-ic">🚗</div><div class="l-main"><div class="l-title">${v.marca} ${v.modelo} <span class="plate">${v.placa}</span></div><div class="l-sub">${v.ano} · ${v.cor} · ${v.km.toLocaleString('pt-BR')} km</div></div></div>`).join('')||'<div class="empty">Sem veículos</div>'}
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Fechar</button>
+      <button class="btn btn-primary" onclick="closeModal();nav('orcamento');novoOrcamento(${id})">📄 Novo orçamento</button>
+    </div>`);
+}
+function modalCliente(){
+  openModal(`
+    <div class="modal-head"><h3>Novo cliente</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Nome completo</label><input id="nc_nome" placeholder="Ex: Carlos Andrade"></div>
+      <div class="row-2">
+        <div class="field"><label>Tipo</label><select id="nc_tipo"><option>PF</option><option>PJ</option></select></div>
+        <div class="field"><label>CPF / CNPJ</label><input id="nc_doc" placeholder="000.000.000-00"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Telefone / WhatsApp</label><input id="nc_tel" placeholder="(11) 90000-0000"></div>
+        <div class="field"><label>E-mail</label><input id="nc_email" placeholder="opcional"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarCliente()">Salvar cliente</button>
+    </div>`);
+}
+function salvarCliente(){
+  const nome=$('#nc_nome').value.trim();
+  if(!nome){toast('Informe o nome do cliente','warn');return}
+  DB.clientes.push({id:Date.now(),nome,tipo:$('#nc_tipo').value,doc:$('#nc_doc').value||'—',tel:$('#nc_tel').value||'—',fiado:0});
+  closeModal();nav('clientes');toast('Cliente cadastrado!','ok');
+}
+
+/* ---------- CARROS ---------- */
+VIEWS.carros=()=>`
+  <div class="page-head">
+    <div><h2>Carros</h2><p>${DB.carros.length} veículos · busca por placa puxa o histórico</p></div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="toast('Formulário de veículo (protótipo)')">+ Novo veículo</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr><th>Placa</th><th>Veículo</th><th>Ano</th><th>Cor</th><th>KM</th><th>Proprietário</th></tr></thead>
+      <tbody>
+        ${DB.carros.map(v=>`<tr>
+          <td><span class="plate">${v.placa}</span></td>
+          <td class="t-strong">${v.marca} ${v.modelo}</td>
+          <td>${v.ano}</td><td>${v.cor}</td>
+          <td>${v.km.toLocaleString('pt-BR')} km</td>
+          <td>${cliente(v.clienteId).nome}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+/* ---------- SERVIÇOS ---------- */
+VIEWS.servicos=()=>`
+  <div class="page-head">
+    <div><h2>Catálogo de serviços</h2><p>Mão de obra usada nos orçamentos</p></div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="toast('Cadastro de serviço (protótipo)')">+ Novo serviço</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr><th>Serviço</th><th>Categoria</th><th>Mão de obra</th></tr></thead>
+      <tbody>
+        ${DB.servicos.map(s=>`<tr>
+          <td class="t-strong">${s.nome}</td>
+          <td><span class="badge2 b-blue">${s.cat}</span></td>
+          <td class="t-strong">${money(s.mo)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+/* ---------- ESTOQUE ---------- */
+VIEWS.estoque=()=>`
+  <div class="page-head">
+    <div><h2>Estoque</h2><p>Baixa automática quando a peça entra numa OS</p></div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" onclick="toast('Entrada de mercadoria (protótipo)')">↓ Entrada</button>
+    <button class="btn btn-primary" onclick="toast('Cadastro de peça (protótipo)')">+ Nova peça</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr><th>Peça / Produto</th><th>SKU</th><th>Custo</th><th>Venda</th><th>Margem</th><th>Estoque</th><th>Situação</th></tr></thead>
+      <tbody>
+        ${DB.pecas.map(p=>{
+          const low=p.estoque<=p.min;
+          const margem=Math.round((p.venda-p.custo)/p.custo*100);
+          return `<tr>
+            <td class="t-strong">${p.nome}</td>
+            <td class="t-mut">${p.sku}</td>
+            <td class="t-mut">${money(p.custo)}</td>
+            <td class="t-strong">${money(p.venda)}</td>
+            <td><span class="up">+${margem}%</span></td>
+            <td class="t-strong">${p.estoque} ${p.un}</td>
+            <td>${low?`<span class="badge2 b-red"><span class="dotb" style="background:var(--vermelho)"></span>Baixo (mín ${p.min})</span>`:`<span class="badge2 b-green">OK</span>`}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+/* ---------- ORÇAMENTO (o fluxo-estrela) ---------- */
+VIEWS.orcamento=()=>`
+  <div class="page-head">
+    <div><h2>Orçamentos</h2><p>Do balcão à OS em 1 clique</p></div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="novoOrcamento()">+ Novo orçamento</button>
+  </div>
+  <div class="panel" id="orcListPanel">
+    <table>
+      <thead><tr><th>Nº</th><th>Cliente</th><th>Veículo</th><th>Data</th><th>Validade</th><th>Total</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${DB.orcamentos.map(o=>`<tr>
+          <td class="t-strong">${o.id}</td>
+          <td>${cliente(o.clienteId).nome}</td>
+          <td><span class="plate">${carro(o.carroId).placa}</span></td>
+          <td class="t-mut">${o.data}</td>
+          <td class="t-mut">${o.validade}</td>
+          <td class="t-strong">${money(o.total)}</td>
+          <td><span class="badge2 ${statusColor(o.status)}">${o.status}</span></td>
+          <td>${o.status==='Aprovado'
+            ?`<button class="btn btn-success btn-sm" onclick="aprovarParaOS('${o.id}')">→ Virar OS</button>`
+            :`<button class="btn btn-ghost btn-sm" onclick="toast('Abrindo ${o.id} (protótipo)')">Abrir</button>`}
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+function novoOrcamento(clienteId=null){
+  orcAtual.clienteId=clienteId; orcAtual.carroId=null;
+  orcAtual.servicos=[]; orcAtual.pecas=[]; orcAtual.desconto=0;
+  $('#main').innerHTML=`
+  <div class="page-head">
+    <div><h2>Novo orçamento</h2><p>Selecione o cliente, o carro e adicione os itens — o total é calculado na hora</p></div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" onclick="nav('orcamento')">← Voltar</button>
+  </div>
+  <div class="orc-layout">
+    <div>
+      <div class="panel"><div class="panel-body" style="padding:18px">
+        <div class="row-2">
+          <div class="field"><label>Cliente</label>
+            <select id="orc_cli" onchange="orcSetCliente(this.value)">
+              <option value="">Selecione...</option>
+              ${DB.clientes.map(c=>`<option value="${c.id}" ${c.id==clienteId?'selected':''}>${c.nome}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Veículo (busca por placa)</label>
+            <select id="orc_car"><option value="">Selecione o cliente primeiro</option></select>
+          </div>
+        </div>
+      </div></div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-head"><h3>🔧 Serviços (mão de obra)</h3></div>
+        <div class="panel-body">
+          <div class="add-line">
+            <div class="field"><label>Serviço do catálogo</label>
+              <select id="add_serv">${DB.servicos.map(s=>`<option value="${s.id}">${s.nome} — ${money(s.mo)}</option>`).join('')}</select>
+            </div>
+            <button class="btn btn-primary" onclick="addServico()">+ Adicionar</button>
+          </div>
+          <div id="listaServ"></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-head"><h3>📦 Peças (baixa do estoque)</h3></div>
+        <div class="panel-body">
+          <div class="add-line">
+            <div class="field" style="flex:2"><label>Peça</label>
+              <select id="add_peca">${DB.pecas.map(p=>`<option value="${p.id}">${p.nome} — ${money(p.venda)} (est. ${p.estoque})</option>`).join('')}</select>
+            </div>
+            <div class="field" style="max-width:90px"><label>Qtd</label><input type="number" id="add_qtd" value="1" min="1"></div>
+            <button class="btn btn-primary" onclick="addPeca()">+ Adicionar</button>
+          </div>
+          <div id="listaPeca"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RESUMO -->
+    <div class="panel resumo">
+      <div class="panel-head"><h3>💵 Resumo</h3></div>
+      <div class="panel-body" id="resumoBox"></div>
+    </div>
+  </div>`;
+  if(clienteId) orcSetCliente(clienteId);
+  renderOrc();
+}
+function orcSetCliente(id){
+  orcAtual.clienteId=id; orcAtual.carroId=null;
+  const carros=DB.carros.filter(c=>c.clienteId==id);
+  $('#orc_car').innerHTML = carros.length
+    ? carros.map(c=>`<option value="${c.id}">${c.marca} ${c.modelo} · ${c.placa}</option>`).join('')
+    : '<option value="">Cliente sem veículo</option>';
+  if(carros.length) orcAtual.carroId=carros[0].id;
+  $('#orc_car').onchange=e=>orcAtual.carroId=e.target.value;
+}
+function addServico(){
+  const s=DB.servicos.find(x=>x.id==$('#add_serv').value);
+  orcAtual.servicos.push({...s});
+  renderOrc();toast('Serviço adicionado','ok');
+}
+function addPeca(){
+  const p=DB.pecas.find(x=>x.id==$('#add_peca').value);
+  const qtd=Math.max(1,parseInt($('#add_qtd').value)||1);
+  if(qtd>p.estoque){toast(`Estoque insuficiente — vira "aguardando peça"`,'warn')}
+  orcAtual.pecas.push({...p,qtd});
+  renderOrc();toast('Peça adicionada','ok');
+}
+function delServ(i){orcAtual.servicos.splice(i,1);renderOrc()}
+function delPeca(i){orcAtual.pecas.splice(i,1);renderOrc()}
+function renderOrc(){
+  const ls=$('#listaServ'); if(!ls)return;
+  ls.innerHTML=orcAtual.servicos.length?orcAtual.servicos.map((s,i)=>`
+    <div class="item-row"><div class="i-main"><div class="i-name">${s.nome}</div><div class="i-meta">${s.cat}</div></div>
+    <span class="i-val">${money(s.mo)}</span><button class="i-del" onclick="delServ(${i})">🗑️</button></div>`).join('')
+    :'<div class="empty">Nenhum serviço adicionado</div>';
+
+  $('#listaPeca').innerHTML=orcAtual.pecas.length?orcAtual.pecas.map((p,i)=>`
+    <div class="item-row"><div class="i-main"><div class="i-name">${p.nome}</div><div class="i-meta">${p.qtd} × ${money(p.venda)}</div></div>
+    <span class="i-val">${money(p.qtd*p.venda)}</span><button class="i-del" onclick="delPeca(${i})">🗑️</button></div>`).join('')
+    :'<div class="empty">Nenhuma peça adicionada</div>';
+
+  const totServ=orcAtual.servicos.reduce((s,x)=>s+x.mo,0);
+  const totPeca=orcAtual.pecas.reduce((s,x)=>s+x.qtd*x.venda,0);
+  const sub=totServ+totPeca;
+  const total=Math.max(0,sub-orcAtual.desconto);
+  $('#resumoBox').innerHTML=`
+    <div class="line"><span>Serviços</span><span>${money(totServ)}</span></div>
+    <div class="line"><span>Peças</span><span>${money(totPeca)}</span></div>
+    <div class="line"><span>Subtotal</span><span class="t-strong">${money(sub)}</span></div>
+    <div class="line disc"><span>Desconto ${currentUser.role==='Mecânico'?'🔒':''}</span>
+      <span>R$ <input type="number" value="${orcAtual.desconto}" min="0" ${currentUser.role==='Mecânico'?'disabled':''} onchange="orcAtual.desconto=Math.max(0,parseFloat(this.value)||0);renderOrc()"></span></div>
+    <div class="line total"><span>TOTAL</span><span>${money(total)}</span></div>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:14px" onclick="toast('PDF gerado — pronto para WhatsApp (protótipo)','ok')">🖨️ Imprimir / WhatsApp</button>
+    <button class="btn btn-success" style="width:100%;justify-content:center;margin-top:10px" onclick="salvarOrcamento(${total})">✔️ Aprovar e gerar OS</button>
+  `;
+}
+function salvarOrcamento(total){
+  if(!orcAtual.clienteId){toast('Selecione o cliente','warn');return}
+  if(!orcAtual.carroId){toast('Selecione o veículo','warn');return}
+  if(!orcAtual.servicos.length && !orcAtual.pecas.length){toast('Adicione ao menos 1 serviço ou peça','warn');return}
+  // baixa estoque
+  orcAtual.pecas.forEach(p=>{const peca=DB.pecas.find(x=>x.id==p.id);if(peca)peca.estoque=Math.max(0,peca.estoque-p.qtd)});
+  const osId=seqOs++;
+  DB.ordens.unshift({
+    id:osId,clienteId:orcAtual.clienteId,carroId:orcAtual.carroId,
+    mecanico:"A atribuir",status:"Aberta",abertura:"01/07",prevista:"03/07",
+    total,pago:false,itens:orcAtual.servicos.length+orcAtual.pecas.length
+  });
+  DB.orcamentos.unshift({id:"OR-0"+(seqOrc++),clienteId:orcAtual.clienteId,carroId:orcAtual.carroId,data:"01/07",validade:"16/07",status:"Aprovado",total});
+  toast(`OS #${osId} criada! Estoque baixado automaticamente.`,'ok');
+  nav('ordens');
+}
+function aprovarParaOS(orcId){
+  const o=DB.orcamentos.find(x=>x.id===orcId);
+  const osId=seqOs++;
+  DB.ordens.unshift({id:osId,clienteId:o.clienteId,carroId:o.carroId,mecanico:"A atribuir",status:"Aberta",abertura:"01/07",prevista:"03/07",total:o.total,pago:false,itens:2});
+  toast(`Orçamento ${orcId} → OS #${osId} criada!`,'ok');
+  nav('ordens');
+}
+
+/* ---------- ORDENS DE SERVIÇO ---------- */
+VIEWS.ordens=()=>`
+  <div class="page-head">
+    <div><h2>Ordens de Serviço</h2><p>Acompanhe o carro do balcão à entrega</p></div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="nav('orcamento');novoOrcamento()">+ Nova OS (via orçamento)</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr><th>OS</th><th>Cliente</th><th>Veículo</th><th>Mecânico</th><th>Prev.</th><th>Total</th><th>Pgto</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${DB.ordens.map(o=>`<tr>
+          <td class="t-strong">#${o.id}</td>
+          <td>${cliente(o.clienteId).nome}</td>
+          <td><span class="plate">${carro(o.carroId).placa}</span> <span class="t-mut">${carro(o.carroId).modelo}</span></td>
+          <td>${o.mecanico.split(' ')[0]}</td>
+          <td class="t-mut">${o.prevista}</td>
+          <td class="t-strong">${money(o.total)}</td>
+          <td>${o.pago?'<span class="badge2 b-green">Pago</span>':'<span class="badge2 b-gray">Em aberto</span>'}</td>
+          <td><span class="badge2 ${statusColor(o.status)}">${o.status}</span></td>
+          <td>${!o.pago && ['Concluída','Entregue'].includes(o.status)
+              ?`<button class="btn btn-success btn-sm" onclick="receberOS(${o.id})">💰 Receber</button>`
+              :o.status==='Aberta'?`<button class="btn btn-ghost btn-sm" onclick="avancarOS(${o.id})">▶ Iniciar</button>`
+              :o.status==='Em execução'?`<button class="btn btn-ghost btn-sm" onclick="concluirOS(${o.id})">✔ Concluir</button>`
+              :'<span class="t-mut">—</span>'}
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+function avancarOS(id){const o=DB.ordens.find(x=>x.id==id);o.status='Em execução';o.mecanico='Pedro (Mecânico)';nav('ordens');toast(`OS #${id} em execução`,'ok')}
+function concluirOS(id){const o=DB.ordens.find(x=>x.id==id);o.status='Concluída';nav('ordens');toast(`OS #${id} concluída — pronta para receber`,'ok')}
+function receberOS(id){
+  const o=DB.ordens.find(x=>x.id==id);
+  openModal(`
+    <div class="modal-head"><h3>Receber OS #${id}</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-body">
+      <div style="text-align:center;margin-bottom:18px">
+        <div class="t-mut">Valor total</div>
+        <div style="font-size:34px;font-weight:800;color:var(--petroleo)">${money(o.total)}</div>
+      </div>
+      <div class="field"><label>Forma de pagamento</label>
+        <select id="rec_forma"><option>À vista (dinheiro)</option><option>PIX</option><option>Cartão</option><option>Parcelado</option><option>Fiado</option></select>
+      </div>
+      <div class="alert-box alert-blue"><span class="a-ic">💡</span>Ao confirmar, gera entrada automática no livro-caixa.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-success" onclick="confirmarRecebimento(${id})">Confirmar recebimento</button>
+    </div>`);
+}
+function confirmarRecebimento(id){
+  const o=DB.ordens.find(x=>x.id==id);
+  const forma=$('#rec_forma').value;
+  o.pago=true;o.status='Entregue';
+  DB.caixa.unshift({data:"01/07",tipo:"entrada",desc:`OS #${id} — ${carro(o.carroId).modelo}`,forma,valor:o.total,origem:"OS"});
+  closeModal();nav('ordens');toast(`Recebido ${money(o.total)} · entrada lançada no caixa`,'ok');
+}
+
+/* ---------- AGENDA ---------- */
+VIEWS.agenda=()=>`
+  <div class="page-head">
+    <div><h2>Agenda</h2><p>Terça, 01/07 · avisa conflito de horário</p></div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="toast('Novo agendamento (protótipo)')">+ Agendar</button>
+  </div>
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-head"><h3>📅 Hoje</h3></div>
+      <div class="panel-body">
+        ${DB.agenda.map(a=>`<div class="list-row">
+          <div class="l-ic" style="background:var(--petroleo);color:#fff;font-size:12px;font-weight:700">${a.hora}</div>
+          <div class="l-main"><div class="l-title">${a.cliente}</div><div class="l-sub">${a.carro} — ${a.tipo}</div></div>
+          <span class="badge2 ${a.status==='Confirmada'?'b-green':'b-yellow'}">${a.status}</span>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>🔔 Oportunidades de retorno</h3></div>
+      <div class="panel-body">
+        <div class="alert-box alert-yellow"><span class="a-ic">🚗</span>Gol FKG-2B34 — revisão vencida (78.500 km)</div>
+        <div class="alert-box alert-yellow"><span class="a-ic">🚗</span>Fiorino RTA-9021 — 6 meses sem visita</div>
+        <div class="alert-box alert-blue"><span class="a-ic">🛡️</span>Fiesta FST-3300 — garantia até 05/07</div>
+      </div>
+    </div>
+  </div>`;
+
+/* ---------- LIVRO-CAIXA ---------- */
+VIEWS.caixa=()=>{
+  const canSee = currentUser.role!=='Mecânico';
+  if(!canSee) return semAcesso('Livro-Caixa');
+  const ent=DB.caixa.filter(c=>c.tipo==='entrada').reduce((s,c)=>s+c.valor,0);
+  const sai=DB.caixa.filter(c=>c.tipo==='saída').reduce((s,c)=>s+c.valor,0);
+  return `
+  <div class="page-head">
+    <div><h2>Livro-Caixa</h2><p>Entradas e saídas · fechamento diário</p></div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" onclick="toast('Lançamento manual (protótipo)')">+ Lançamento</button>
+  </div>
+  <div class="cards" style="grid-template-columns:repeat(3,1fr)">
+    <div class="stat"><div class="s-ic" style="background:#e2f6ee;color:var(--verde)">↑</div><div class="s-label">Entradas</div><div class="s-val" style="color:var(--verde)">${money(ent)}</div></div>
+    <div class="stat"><div class="s-ic" style="background:#fce6e6;color:var(--vermelho)">↓</div><div class="s-label">Saídas</div><div class="s-val" style="color:var(--vermelho)">${money(sai)}</div></div>
+    <div class="stat"><div class="s-ic" style="background:#e5eef4;color:var(--petroleo)">=</div><div class="s-label">Saldo</div><div class="s-val">${money(ent-sai)}</div></div>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr><th>Data</th><th>Descrição</th><th>Origem</th><th>Forma</th><th>Valor</th></tr></thead>
+      <tbody>
+        ${DB.caixa.map(c=>`<tr>
+          <td class="t-mut">${c.data}</td>
+          <td class="t-strong">${c.desc}</td>
+          <td><span class="badge2 b-gray">${c.origem}</span></td>
+          <td class="t-mut">${c.forma}</td>
+          <td class="t-strong" style="color:${c.tipo==='entrada'?'var(--verde)':'var(--vermelho)'}">${c.tipo==='entrada'?'+':'−'} ${money(c.valor)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+};
+
+/* ---------- DESPESAS ---------- */
+VIEWS.despesas=()=>{
+  if(currentUser.role==='Mecânico') return semAcesso('Despesas');
+  return `
+  <div class="page-head">
+    <div><h2>Despesas</h2><p>Toda despesa vira saída no caixa</p></div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="toast('Nova despesa (protótipo)')">+ Nova despesa</button>
+  </div>
+  <div class="panel">
+    <table>
+      <thead><tr><th>Vencimento</th><th>Categoria</th><th>Descrição</th><th>Recorrente</th><th>Valor</th><th>Status</th></tr></thead>
+      <tbody>
+        ${DB.despesas.map(d=>`<tr>
+          <td class="t-mut">${d.data}</td>
+          <td><span class="badge2 b-orange">${d.cat}</span></td>
+          <td class="t-strong">${d.desc}</td>
+          <td>${d.rec?'🔁 Mensal':'—'}</td>
+          <td class="t-strong">${money(d.valor)}</td>
+          <td>${d.pago?'<span class="badge2 b-green">Pago</span>':'<span class="badge2 b-red">A pagar</span>'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+};
+
+/* ---------- RELATÓRIOS ---------- */
+VIEWS.relatorios=()=>{
+  if(currentUser.role==='Mecânico') return semAcesso('Relatórios');
+  const fat=8420, desp=3560, custoPeca=1240, lucro=fat-desp-custoPeca;
+  return `
+  <div class="page-head">
+    <div><h2>Relatórios & Indicadores</h2><p>Julho/2026 · faturamento ≠ lucro</p></div>
+  </div>
+  <div class="cards">
+    <div class="stat"><div class="s-ic" style="background:#e5eef4;color:var(--petroleo)">📈</div><div class="s-label">Faturamento</div><div class="s-val">${money(fat)}</div><div class="s-sub up">↑ 12% vs mês anterior</div></div>
+    <div class="stat"><div class="s-ic" style="background:#fce6e6;color:var(--vermelho)">📉</div><div class="s-label">Despesas</div><div class="s-val">${money(desp)}</div></div>
+    <div class="stat"><div class="s-ic" style="background:#fdeee5;color:var(--laranja)">🔩</div><div class="s-label">Custo de peças</div><div class="s-val">${money(custoPeca)}</div></div>
+    <div class="stat" style="border:2px solid var(--verde)"><div class="s-ic" style="background:#e2f6ee;color:var(--verde)">💚</div><div class="s-label">LUCRO REAL</div><div class="s-val" style="color:var(--verde)">${money(lucro)}</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-head"><h3>🔧 Serviços mais vendidos</h3></div>
+      <div class="panel-body">
+        ${barChart([['Troca de óleo',28,'var(--petroleo)'],['Alinhamento',19,'var(--petroleo)'],['Freios',15,'var(--petroleo)'],['Revisão',11,'var(--petroleo)'],['Elétrica',7,'var(--petroleo)']],'x')}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>💸 Despesas por categoria</h3></div>
+      <div class="panel-body">
+        ${barChart([['Salários',5200,'var(--laranja)'],['Aluguel',2800,'var(--laranja)'],['Peças',1240,'var(--laranja)'],['Energia',340,'var(--laranja)']],'R$')}
+      </div>
+    </div>
+  </div>`;
+};
+function barChart(data,unit){
+  const max=Math.max(...data.map(d=>d[1]));
+  return data.map(d=>`<div class="bar-row">
+    <div class="b-label">${d[0]}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${d[1]/max*100}%;background:${d[2]}"></div></div>
+    <div class="b-val">${unit==='R$'?money(d[1]):d[1]+'x'}</div>
+  </div>`).join('');
+}
+
+/* ---------- CONFIG ---------- */
+VIEWS.config=()=>`
+  <div class="page-head"><div><h2>Configurações</h2><p>Identidade e parâmetros do sistema</p></div></div>
+  <div class="config-grid">
+    <div class="panel">
+      <div class="panel-head"><h3>🎨 Identidade visual</h3></div>
+      <div class="panel-body" style="display:flex;flex-direction:column;gap:10px">
+        <div class="swatch"><div class="sw" style="background:#0F3D57"></div><div><div class="t-strong">Azul Petróleo</div><div class="t-mut">#0F3D57 · primária</div></div></div>
+        <div class="swatch"><div class="sw" style="background:#F26522"></div><div><div class="t-strong">Laranja Oficina</div><div class="t-mut">#F26522 · ações</div></div></div>
+        <div class="swatch"><div class="sw" style="background:#2FB37A"></div><div><div class="t-strong">Verde</div><div class="t-mut">#2FB37A · sucesso</div></div></div>
+        <div class="swatch"><div class="sw" style="background:#E24C4B"></div><div><div class="t-strong">Vermelho</div><div class="t-mut">#E24C4B · alertas</div></div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>👥 Usuários & perfis</h3></div>
+      <div class="panel-body">
+        <div class="list-row"><span class="avatar-sm">JO</span><div class="l-main"><div class="l-title">João</div><div class="l-sub">Dono / Administrador</div></div><span class="badge2 b-green">Ativo</span></div>
+        <div class="list-row"><span class="avatar-sm">MA</span><div class="l-main"><div class="l-title">Marina</div><div class="l-sub">Atendente / Recepção</div></div><span class="badge2 b-green">Ativo</span></div>
+        <div class="list-row"><span class="avatar-sm">PE</span><div class="l-main"><div class="l-title">Pedro</div><div class="l-sub">Mecânico</div></div><span class="badge2 b-green">Ativo</span></div>
+        <div class="list-row"><span class="avatar-sm">RO</span><div class="l-main"><div class="l-title">Roberto</div><div class="l-sub">Mecânico</div></div><span class="badge2 b-green">Ativo</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>⚙️ Parâmetros</h3></div>
+      <div class="panel-body">
+        <div class="field"><label>Validade padrão do orçamento (dias)</label><input value="15"></div>
+        <div class="field"><label>Margem padrão de peça (%)</label><input value="70"></div>
+        <div class="field"><label>Garantia de serviço (dias)</label><input value="15"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>💾 Backup & segurança</h3></div>
+      <div class="panel-body">
+        <div class="alert-box alert-blue"><span class="a-ic">☁️</span>Backup automático diário (nuvem) — último: hoje 03:00</div>
+        <div class="alert-box alert-blue"><span class="a-ic">🔒</span>Senhas criptografadas · Log de auditoria ativo (LGPD)</div>
+        <button class="btn btn-ghost" style="margin-top:8px" onclick="toast('Backup manual iniciado (protótipo)','ok')">Fazer backup agora</button>
+      </div>
+    </div>
+  </div>`;
+
+function semAcesso(mod){
+  return `<div class="page-head"><div><h2>${mod}</h2></div></div>
+  <div class="panel"><div class="empty" style="padding:60px">
+    🔒<br><br><b>Acesso restrito</b><br>
+    O perfil <b>Mecânico</b> não pode ver o financeiro.<br>Entre como Dono ou Atendente.
+  </div></div>`;
+}
+
+/* global search enter */
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter' && document.activeElement.id==='globalSearch'){
+    const q=$('#globalSearch').value.trim().toLowerCase();
+    const car=DB.carros.find(c=>c.placa.toLowerCase().includes(q));
+    if(car){nav('clientes');verCliente(car.clienteId);toast('Cliente encontrado pela placa!','ok')}
+    else if(q) toast('Nada encontrado para "'+q+'"','warn');
+  }
+});
+</script>
+</body>
+</html>

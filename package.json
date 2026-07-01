@@ -1,0 +1,24 @@
+{
+  "name": "hermes-oficina",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hermes — Sistema de Gestão para Oficina Mecânica",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f",
+    "db:generate": "npm run db:generate -w @hermes/api",
+    "db:migrate": "npm run db:migrate -w @hermes/api",
+    "db:seed": "npm run db:seed -w @hermes/api",
+    "db:studio": "npm run db:studio -w @hermes/api",
+    "dev:api": "npm run dev -w @hermes/api",
+    "dev:desktop": "npm run dev -w @hermes/desktop"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
