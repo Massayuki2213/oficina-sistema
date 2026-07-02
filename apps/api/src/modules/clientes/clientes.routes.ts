@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
+import { authenticate, requirePermission } from '../../lib/auth.js';
 import { createClienteSchema, updateClienteSchema } from './clientes.schema.js';
 import * as service from './clientes.service.js';
 
@@ -9,6 +10,9 @@ function isNotFound(err: unknown) {
 }
 
 export async function clientesRoutes(app: FastifyInstance) {
+  // Todos os endpoints de clientes exigem usuário autenticado.
+  app.addHook('preHandler', authenticate);
+
   // GET /clientes?busca=texto  — lista/busca (RN-16: busca puxa o cliente)
   app.get('/', async (req) => {
     const { busca } = req.query as { busca?: string };
@@ -48,8 +52,8 @@ export async function clientesRoutes(app: FastifyInstance) {
     }
   });
 
-  // DELETE /clientes/:id — inativa (soft delete). TODO: restringir ao perfil DONO no módulo auth.
-  app.delete('/:id', async (req, reply) => {
+  // DELETE /clientes/:id — inativa (soft delete). Só quem pode apagar registros (Dono).
+  app.delete('/:id', { preHandler: [requirePermission('apagarRegistros')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {
       await service.deactivateCliente(id);

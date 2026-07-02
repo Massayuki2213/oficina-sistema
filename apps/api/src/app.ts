@@ -5,6 +5,7 @@ import { env } from './lib/env.js';
 import { prisma } from './lib/prisma.js';
 import { redis } from './lib/redis.js';
 import { healthRoutes } from './modules/health/health.routes.js';
+import { authRoutes } from './modules/auth/auth.routes.js';
 import { clientesRoutes } from './modules/clientes/clientes.routes.js';
 
 export function buildApp() {
@@ -23,6 +24,7 @@ export function buildApp() {
 
   // Rotas
   app.register(healthRoutes);
+  app.register(authRoutes, { prefix: '/auth' });
   app.register(clientesRoutes, { prefix: '/clientes' });
 
   // TODO: registrar os demais módulos (regras de negócio RN-01 a RN-21):
