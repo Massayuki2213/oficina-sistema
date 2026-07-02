@@ -164,7 +164,7 @@ model Servico {
   nome          String
   descricao     String?
   precoMaoDeObra Decimal @map("preco_mao_de_obra") @db.Decimal(10, 2)
-  tempoEstimado Int?    @map("tempo_estimado_min")
+  tempoEstimadoMin Int?  @map("tempo_estimado_min")
   categoria     String?
   ativo         Boolean @default(true)
 
