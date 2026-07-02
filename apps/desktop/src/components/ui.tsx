@@ -69,10 +69,11 @@ export function Badge({ children, cor = 'bg-linha text-grafite/60' }: { children
   return <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${cor}`}>{children}</span>;
 }
 
-export function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode }) {
+export function Modal({ title, onClose, children, footer, size = 'md' }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode; size?: 'md' | 'lg' }) {
+  const largura = size === 'lg' ? 'max-w-2xl' : 'max-w-md';
   return (
     <div className="fixed inset-0 bg-petroleo/50 grid place-items-center p-5 z-50" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className={`bg-white rounded-2xl w-full ${largura} max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center px-6 py-5 border-b border-linha">
           <h3 className="text-lg font-extrabold text-petroleo">{title}</h3>
           <button onClick={onClose} className="ml-auto text-2xl text-grafite/40 hover:text-grafite w-8 h-8">

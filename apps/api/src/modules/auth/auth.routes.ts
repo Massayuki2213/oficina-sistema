@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
+import type { PerfilUsuario } from '@prisma/client';
 import { authenticate } from '../../lib/auth.js';
 import { loginSchema } from './auth.schema.js';
-import { validarCredenciais } from './auth.service.js';
+import { validarCredenciais, listUsuarios } from './auth.service.js';
 
 export async function authRoutes(app: FastifyInstance) {
   // POST /auth/login — troca e-mail+senha por um token JWT (RN da seção 2).
@@ -26,5 +27,11 @@ export async function authRoutes(app: FastifyInstance) {
   // GET /auth/me — dados do usuário logado (a partir do token).
   app.get('/me', { preHandler: [authenticate] }, async (req) => {
     return req.user;
+  });
+
+  // GET /auth/usuarios?perfil=MECANICO — lista usuários (p.ex. mecânicos p/ atribuir à OS).
+  app.get('/usuarios', { preHandler: [authenticate] }, async (req) => {
+    const { perfil } = req.query as { perfil?: PerfilUsuario };
+    return listUsuarios(perfil);
   });
 }

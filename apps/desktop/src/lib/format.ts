@@ -29,6 +29,33 @@ export const LABEL_STATUS_OS: Record<string, string> = {
 export const dataBR = (iso: string) =>
   new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 
+export const LABEL_STATUS_ORCAMENTO: Record<string, string> = {
+  RASCUNHO: 'Rascunho',
+  ENVIADO: 'Enviado',
+  APROVADO: 'Aprovado',
+  RECUSADO: 'Recusado',
+  EXPIRADO: 'Expirado',
+};
+
+// Cores (classes Tailwind) por status, reutilizadas nos badges.
+export const CORES_STATUS_OS: Record<string, string> = {
+  ABERTA: 'bg-azul-bg text-azul',
+  EM_EXECUCAO: 'bg-azul-bg text-azul',
+  AGUARDANDO_PECA: 'bg-amarelo-bg text-amarelo',
+  AGUARDANDO_APROVACAO: 'bg-amarelo-bg text-amarelo',
+  CONCLUIDA: 'bg-verde-bg text-verde',
+  ENTREGUE: 'bg-linha text-grafite/60',
+  CANCELADA: 'bg-vermelho-bg text-vermelho',
+};
+
+export const CORES_STATUS_ORCAMENTO: Record<string, string> = {
+  RASCUNHO: 'bg-linha text-grafite/60',
+  ENVIADO: 'bg-azul-bg text-azul',
+  APROVADO: 'bg-verde-bg text-verde',
+  RECUSADO: 'bg-vermelho-bg text-vermelho',
+  EXPIRADO: 'bg-amarelo-bg text-amarelo',
+};
+
 export const LABEL_FORMA_PAGAMENTO: Record<string, string> = {
   A_VISTA: 'À vista',
   PIX: 'PIX',
