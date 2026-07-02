@@ -10,6 +10,8 @@ import { clientesRoutes } from './modules/clientes/clientes.routes.js';
 import { carrosRoutes } from './modules/carros/carros.routes.js';
 import { servicosRoutes } from './modules/servicos/servicos.routes.js';
 import { pecasRoutes } from './modules/pecas/pecas.routes.js';
+import { orcamentosRoutes } from './modules/orcamentos/orcamentos.routes.js';
+import { AppError } from './lib/errors.js';
 
 export function buildApp() {
   const app = Fastify({
@@ -32,9 +34,20 @@ export function buildApp() {
   app.register(carrosRoutes, { prefix: '/carros' });
   app.register(servicosRoutes, { prefix: '/servicos' });
   app.register(pecasRoutes, { prefix: '/pecas' });
+  app.register(orcamentosRoutes, { prefix: '/orcamentos' });
+
+  // Tratador global: converte AppError (regra de negócio) na resposta certa.
+  app.setErrorHandler((error, req, reply) => {
+    if (error instanceof AppError) {
+      return reply.code(error.statusCode).send({ message: error.message });
+    }
+    req.log.error(error);
+    const code = typeof error.statusCode === 'number' ? error.statusCode : 500;
+    return reply.code(code).send({ message: code >= 500 ? 'Erro interno no servidor' : error.message });
+  });
 
   // TODO: registrar os demais módulos (regras de negócio RN-01 a RN-21):
-  // app.register(orcamentosRoutes, { prefix: '/orcamentos' });
+  // app.register(ordensRoutes, { prefix: '/ordens' });
   // app.register(ordensRoutes, { prefix: '/ordens' });
   // app.register(estoqueRoutes, { prefix: '/estoque' });
   // app.register(caixaRoutes, { prefix: '/caixa' });
