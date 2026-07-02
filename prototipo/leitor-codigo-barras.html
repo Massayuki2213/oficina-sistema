@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes — Leitor de Código de Barras</title>
+<style>
+  :root{
+    --bg:#EEF2F5;
+    --surface:#FFFFFF;
+    --petroleo:#0F3D57;
+    --petroleo-deep:#0B2E42;
+    --laranja:#F26522;
+    --laranja-deep:#D9541A;
+    --ink:#16232B;
+    --muted:#5E6E7A;
+    --line:#DCE4EA;
+    --verde:#2FB37A;
+    --verde-bg:#E4F5EE;
+    --amarelo:#E8A100;
+    --amarelo-bg:#FBF2D9;
+    --vermelho:#E24C4B;
+    --vermelho-bg:#FBE7E7;
+    --sans:ui-sans-serif,system-ui,'Segoe UI',Roboto,-apple-system,sans-serif;
+    --mono:ui-monospace,'Cascadia Code','Consolas','SFMono-Regular',monospace;
+    --shadow:0 1px 2px rgba(15,61,87,.06),0 8px 24px rgba(15,61,87,.08);
+    --r:14px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:var(--sans);
+    background:var(--bg);
+    color:var(--ink);
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  input,select{font-family:inherit;font-size:15px;color:inherit}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  :focus-visible{outline:3px solid var(--laranja);outline-offset:2px}
+
+  /* ---------- LOGIN ---------- */
+  #login{
+    position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:24px;
+    background:radial-gradient(120% 120% at 50% 0%,var(--petroleo) 0%,var(--petroleo-deep) 70%);
+  }
+  .login-card{
+    background:var(--surface);border-radius:20px;padding:36px;width:min(400px,100%);
+    box-shadow:0 30px 80px rgba(0,0,0,.35);
+  }
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+  .mark{
+    width:44px;height:44px;border-radius:12px;background:var(--laranja);
+    display:grid;place-items:center;color:#fff;box-shadow:0 6px 16px rgba(242,101,34,.4);
+  }
+  .mark svg{width:26px;height:26px}
+  .brand h1{font-size:24px;font-weight:800;color:var(--petroleo);letter-spacing:.4px}
+  .brand .sub{font-size:12px;color:var(--muted);font-weight:600}
+  .login-card h2{font-size:16px;margin:22px 0 4px}
+  .login-card p.lead{color:var(--muted);font-size:13.5px;margin-bottom:18px}
+  label{display:block;font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.3px;margin:14px 0 6px;text-transform:uppercase}
+  .field-inp{width:100%;padding:12px 14px;border:1.6px solid var(--line);border-radius:11px;background:var(--surface);transition:border-color .15s}
+  .field-inp:focus{outline:none;border-color:var(--laranja)}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:9px;
+    padding:13px 18px;border-radius:11px;font-weight:700;font-size:15px;transition:.15s;white-space:nowrap;
+  }
+  .btn-primary{background:var(--laranja);color:#fff;box-shadow:0 6px 16px rgba(242,101,34,.28)}
+  .btn-primary:hover{background:var(--laranja-deep)}
+  .btn-ghost{background:var(--surface);border:1.6px solid var(--line);color:var(--petroleo)}
+  .btn-ghost:hover{border-color:var(--petroleo)}
+  .btn-block{width:100%;margin-top:22px}
+  .err{color:var(--vermelho);font-size:13px;font-weight:600;margin-top:12px;min-height:18px}
+
+  /* ---------- APP ---------- */
+  #app{display:none;flex-direction:column;min-height:100%}
+  #app.on{display:flex}
+  .topbar{
+    background:var(--petroleo);color:#fff;display:flex;align-items:center;gap:14px;
+    padding:14px 22px;box-shadow:var(--shadow);position:sticky;top:0;z-index:10;
+  }
+  .topbar .mark{width:34px;height:34px;border-radius:9px}
+  .topbar .mark svg{width:20px;height:20px}
+  .topbar .name{font-weight:800;font-size:18px;letter-spacing:.4px}
+  .topbar .tag{font-size:11px;color:#9FC0D3;font-weight:600;margin-top:-3px}
+  .topbar .spacer{flex:1}
+  .who{display:flex;align-items:center;gap:10px;font-size:13px}
+  .who .avatar{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.14);display:grid;place-items:center;font-weight:700}
+  .who .role{font-size:11px;color:#9FC0D3}
+  .link{color:#9FC0D3;font-size:12.5px;font-weight:700;padding:6px 10px;border-radius:8px}
+  .link:hover{background:rgba(255,255,255,.1);color:#fff}
+
+  main{
+    flex:1;width:min(1120px,100%);margin:0 auto;padding:28px 22px 40px;
+    display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start;
+  }
+  @media(max-width:880px){main{grid-template-columns:1fr}}
+
+  /* scan hero */
+  .stage{display:flex;flex-direction:column;gap:18px}
+  .scanner{
+    background:var(--surface);border:1.6px solid var(--line);border-radius:var(--r);
+    padding:26px;box-shadow:var(--shadow);position:relative;overflow:hidden;
+  }
+  .scanner .eyebrow{
+    display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:1px;
+    text-transform:uppercase;color:var(--petroleo);margin-bottom:14px;
+  }
+  .pulse{width:9px;height:9px;border-radius:50%;background:var(--verde);box-shadow:0 0 0 0 rgba(47,179,122,.5)}
+  @media(prefers-reduced-motion:no-preference){.pulse{animation:pulse 2s infinite}}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,179,122,.5)}70%{box-shadow:0 0 0 10px rgba(47,179,122,0)}100%{box-shadow:0 0 0 0 rgba(47,179,122,0)}}
+  .scan-wrap{position:relative}
+  #scanInput{
+    width:100%;padding:20px 20px 20px 58px;border:2px solid var(--line);border-radius:13px;
+    font-family:var(--mono);font-size:30px;font-weight:600;letter-spacing:2px;color:var(--petroleo);
+    background:var(--bg);transition:.15s;
+  }
+  #scanInput::placeholder{color:#A9B7C1;letter-spacing:1px;font-size:20px;font-weight:500}
+  #scanInput:focus{outline:none;border-color:var(--laranja);background:#fff;box-shadow:0 0 0 5px rgba(242,101,34,.12)}
+  .scan-ic{position:absolute;left:20px;top:50%;transform:translateY(-50%);color:var(--laranja);pointer-events:none}
+  .scan-ic svg{width:26px;height:26px;display:block}
+  .hint{margin-top:12px;font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:center}
+  kbd{font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:2px 6px;font-weight:700}
+
+  /* result zone */
+  .result{min-height:180px}
+  .idle{
+    background:var(--surface);border:1.6px dashed var(--line);border-radius:var(--r);
+    padding:40px 24px;text-align:center;color:var(--muted);
+  }
+  .idle .big{width:56px;height:56px;margin:0 auto 14px;color:#B7C4CD}
+  .idle h3{color:var(--ink);font-size:16px;margin-bottom:4px}
+
+  .card{background:var(--surface);border:1.6px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+  .card-top{display:flex;align-items:flex-start;gap:16px;padding:22px 22px 18px}
+  .card-top.found{border-top:4px solid var(--verde)}
+  .card-top.nova{border-top:4px solid var(--laranja)}
+  .card-icon{width:52px;height:52px;border-radius:13px;display:grid;place-items:center;flex-shrink:0}
+  .ic-found{background:var(--verde-bg);color:var(--verde)}
+  .ic-nova{background:#FDEEE5;color:var(--laranja)}
+  .card-icon svg{width:28px;height:28px}
+  .card-h{flex:1;min-width:0}
+  .card-h .code{font-size:13px;color:var(--muted);font-weight:600}
+  .card-h h3{font-size:22px;font-weight:800;color:var(--petroleo);line-height:1.15;margin:2px 0 8px;text-wrap:balance}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;padding:5px 11px;border-radius:20px;letter-spacing:.2px}
+  .pill .dot{width:7px;height:7px;border-radius:50%}
+  .p-ok{background:var(--verde-bg);color:#1C875C}
+  .p-low{background:var(--amarelo-bg);color:#916300}
+  .p-new{background:#FDEEE5;color:var(--laranja-deep)}
+
+  .facts{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);background:var(--bg)}
+  .fact{padding:14px 18px;border-right:1px solid var(--line)}
+  .fact:last-child{border-right:none}
+  .fact .k{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700}
+  .fact .v{font-size:22px;font-weight:800;color:var(--ink);margin-top:3px}
+  .fact .v small{font-size:13px;color:var(--muted);font-weight:600}
+
+  .card-body{padding:20px 22px}
+  .card-body h4{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:14px;font-weight:800}
+  .row{display:grid;gap:14px}
+  .row.c2{grid-template-columns:1fr 1fr}
+  .row.c3{grid-template-columns:1fr 1fr 1fr}
+  .inp-group label{margin-top:0}
+  .actions{display:flex;gap:12px;margin-top:20px;align-items:center;flex-wrap:wrap}
+  .margin-preview{font-size:13px;color:var(--muted);font-weight:600}
+  .margin-preview b{color:var(--verde);font-variant-numeric:tabular-nums}
+
+  .note{
+    display:flex;gap:12px;align-items:flex-start;background:var(--amarelo-bg);color:#7A5400;
+    border-radius:11px;padding:14px 16px;font-size:13.5px;font-weight:600;margin:20px 22px;
+  }
+  .note svg{width:20px;height:20px;flex-shrink:0}
+
+  /* session log */
+  aside{position:sticky;top:88px}
+  .log{background:var(--surface);border:1.6px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+  .log-head{display:flex;align-items:center;gap:8px;padding:16px 18px;border-bottom:1px solid var(--line)}
+  .log-head h3{font-size:14px;font-weight:800;color:var(--petroleo)}
+  .log-head .count{margin-left:auto;font-size:12px;font-weight:800;color:var(--muted);background:var(--bg);border-radius:20px;padding:2px 10px}
+  .log-list{max-height:64vh;overflow-y:auto}
+  .log-empty{padding:28px 18px;text-align:center;color:var(--muted);font-size:13px}
+  .log-item{display:flex;gap:12px;padding:13px 18px;border-bottom:1px solid var(--bg)}
+  .log-item:last-child{border-bottom:none}
+  .log-dot{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex-shrink:0;font-size:15px}
+  .d-new{background:#FDEEE5}
+  .d-add{background:var(--verde-bg)}
+  .log-main{flex:1;min-width:0}
+  .log-main .t{font-weight:700;font-size:13.5px;line-height:1.25}
+  .log-main .s{font-size:12px;color:var(--muted);margin-top:1px}
+  .log-main .s .mono{font-size:11.5px}
+  .log-time{font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+  /* toast */
+  #toasts{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:10px;align-items:center}
+  .toast{
+    display:flex;align-items:center;gap:10px;padding:13px 20px;border-radius:12px;color:#fff;font-weight:700;font-size:14px;
+    box-shadow:0 12px 30px rgba(0,0,0,.22);
+  }
+  @media(prefers-reduced-motion:no-preference){.toast{animation:rise .28s ease}}
+  @keyframes rise{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
+  .toast.ok{background:var(--verde)}
+  .toast.info{background:var(--petroleo)}
+  .toast.warn{background:var(--laranja)}
+  .toast.bad{background:var(--vermelho)}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="login">
+  <div class="login-card">
+    <div class="brand">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      </div>
+      <div>
+        <h1>HERMES</h1>
+        <div class="sub">Estação de leitura de peças</div>
+      </div>
+    </div>
+    <h2>Entrar</h2>
+    <p class="lead">Faça login para cadastrar e repor peças pelo leitor de código de barras.</p>
+    <label for="li-email">E-mail</label>
+    <input id="li-email" class="field-inp" type="email" value="dono@hermes.local" autocomplete="username">
+    <label for="li-senha">Senha</label>
+    <input id="li-senha" class="field-inp" type="password" value="hermes123" autocomplete="current-password">
+    <button class="btn btn-primary btn-block" id="li-btn">Entrar na estação</button>
+    <div class="err" id="li-err"></div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app">
+  <header class="topbar">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+    </div>
+    <div>
+      <div class="name">HERMES</div>
+      <div class="tag">Leitor de código de barras</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="who">
+      <div class="avatar" id="tb-av">–</div>
+      <div>
+        <div id="tb-nome" style="font-weight:700">–</div>
+        <div class="role" id="tb-role">–</div>
+      </div>
+    </div>
+    <button class="link" id="tb-sair">Sair</button>
+  </header>
+
+  <main>
+    <section class="stage">
+      <div class="scanner">
+        <div class="eyebrow"><span class="pulse"></span> Pronto para ler</div>
+        <div class="scan-wrap">
+          <span class="scan-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14M21 5v14"/></svg>
+          </span>
+          <input id="scanInput" inputmode="numeric" autocomplete="off" spellcheck="false"
+                 placeholder="Passe o produto no leitor..." aria-label="Código de barras">
+        </div>
+        <div class="hint">
+          <span>Bipou o produto? O leitor digita o código e confirma sozinho. Ou digite e aperte</span> <kbd>Enter</kbd>
+        </div>
+      </div>
+
+      <div class="result" id="result">
+        <div class="idle">
+          <svg class="big" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14M21 5v14"/></svg>
+          <h3>Aguardando leitura</h3>
+          <div>Passe uma peça no leitor. Se já existir, você repõe o estoque; se for nova, cadastra na hora.</div>
+        </div>
+      </div>
+    </section>
+
+    <aside>
+      <div class="log">
+        <div class="log-head">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F3D57" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+          <h3>Nesta sessão</h3>
+          <span class="count" id="log-count">0</span>
+        </div>
+        <div class="log-list" id="log-list">
+          <div class="log-empty">Nenhuma leitura ainda.</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+const API = 'http://localhost:3333';
+const $ = (s) => document.querySelector(s);
+const el = (t, c) => { const e = document.createElement(t); if (c) e.className = c; return e; };
+const brl = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+let TOKEN = null;
+let USER = null;
+let logCount = 0;
+
+/* ---------- HTTP ---------- */
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {}),
+      ...(opts.headers || {}),
+    },
+  });
+  let body = null;
+  try { body = await res.json(); } catch { /* 204 */ }
+  return { status: res.status, ok: res.ok, body };
+}
+
+/* ---------- TOAST ---------- */
+function toast(msg, kind = 'info') {
+  const t = el('div', 'toast ' + kind);
+  const icon = { ok: '✓', info: '›', warn: '!', bad: '✕' }[kind] || '›';
+  t.innerHTML = '<span>' + icon + '</span><span>' + esc(msg) + '</span>';
+  $('#toasts').appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); }, 2600);
+}
+
+/* ---------- LOGIN ---------- */
+async function login() {
+  const email = $('#li-email').value.trim();
+  const senha = $('#li-senha').value;
+  $('#li-err').textContent = '';
+  $('#li-btn').textContent = 'Entrando...';
+  try {
+    const r = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, senha }) });
+    if (!r.ok) { $('#li-err').textContent = r.body?.message || 'Não foi possível entrar.'; return; }
+    TOKEN = r.body.token; USER = r.body.usuario;
+    $('#tb-nome').textContent = USER.nome;
+    $('#tb-role').textContent = { DONO: 'Dono', ATENDENTE: 'Atendente', MECANICO: 'Mecânico' }[USER.perfil] || USER.perfil;
+    $('#tb-av').textContent = USER.nome.slice(0, 2).toUpperCase();
+    $('#login').style.display = 'none';
+    $('#app').classList.add('on');
+    focusScan();
+  } catch (e) {
+    $('#li-err').textContent = 'API fora do ar? Verifique se o servidor está rodando em ' + API + '.';
+  } finally {
+    $('#li-btn').textContent = 'Entrar na estação';
+  }
+}
+
+function logout() {
+  TOKEN = null; USER = null;
+  $('#app').classList.remove('on');
+  $('#login').style.display = 'grid';
+}
+
+/* ---------- SCAN ---------- */
+function focusScan() { const i = $('#scanInput'); if (i) { i.focus(); i.select(); } }
+
+async function onScan(codigo) {
+  codigo = (codigo || '').trim();
+  if (!codigo) return;
+  const r = await api('/pecas/codigo/' + encodeURIComponent(codigo));
+  if (r.status === 401) { toast('Sessão expirada. Entre de novo.', 'bad'); logout(); return; }
+  if (r.ok) renderEncontrada(r.body);
+  else renderNova(codigo);
+  $('#scanInput').value = '';
+}
+
+/* ---------- RENDER: peça encontrada (repor estoque) ---------- */
+function renderEncontrada(p) {
+  const low = p.estoqueBaixo;
+  const pill = low
+    ? '<span class="pill p-low"><span class="dot" style="background:var(--amarelo)"></span>Estoque baixo</span>'
+    : '<span class="pill p-ok"><span class="dot" style="background:var(--verde)"></span>Em estoque</span>';
+
+  const html = `
+  <div class="card">
+    <div class="card-top found">
+      <div class="card-icon ic-found">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </div>
+      <div class="card-h">
+        <div class="code mono">${esc(p.codigoBarras || '—')}</div>
+        <h3>${esc(p.nome)}</h3>
+        ${pill}
+      </div>
+    </div>
+    <div class="facts">
+      <div class="fact"><div class="k">Em estoque</div><div class="v mono">${p.estoqueAtual} <small>${esc(p.unidade)}</small></div></div>
+      <div class="fact"><div class="k">Mínimo</div><div class="v mono">${p.estoqueMinimo}</div></div>
+      <div class="fact"><div class="k">Preço venda</div><div class="v mono">${brl(p.precoVenda)}</div></div>
+    </div>
+    <div class="card-body">
+      <h4>Registrar entrada (recebimento)</h4>
+      <div class="row c3">
+        <div class="inp-group"><label>Quantidade</label><input id="e-qtd" class="field-inp mono" type="number" min="1" value="1"></div>
+        <div class="inp-group"><label>Custo un. (opcional)</label><input id="e-custo" class="field-inp mono" type="number" min="0" step="0.01" placeholder="${Number(p.precoCusto).toFixed(2)}"></div>
+        <div class="inp-group" style="display:flex;align-items:flex-end"><button class="btn btn-primary" style="width:100%" id="e-btn">+ Dar entrada</button></div>
+      </div>
+      <div class="hint" style="margin-top:12px">Informar o custo recalcula o <b style="color:var(--ink)">custo médio</b> da peça.</div>
+    </div>
+  </div>`;
+  $('#result').innerHTML = html;
+
+  $('#e-btn').addEventListener('click', async () => {
+    const quantidade = parseInt($('#e-qtd').value) || 0;
+    const custoRaw = $('#e-custo').value;
+    if (quantidade < 1) { toast('Quantidade inválida.', 'warn'); return; }
+    const payload = { quantidade };
+    if (custoRaw !== '') payload.custoUnit = parseFloat(custoRaw);
+    const r = await api('/pecas/' + p.id + '/estoque', { method: 'POST', body: JSON.stringify(payload) });
+    if (r.status === 401) { toast('Sessão expirada.', 'bad'); logout(); return; }
+    if (!r.ok) { toast(r.body?.message || 'Falha ao dar entrada.', 'bad'); return; }
+    toast('+' + quantidade + ' ' + r.body.unidade + ' em ' + p.nome, 'ok');
+    addLog('add', p.nome, '+' + quantidade + ' ' + r.body.unidade + ' · estoque agora ' + r.body.estoqueAtual);
+    renderEncontrada(r.body);
+    focusScan();
+  });
+  focusScan();
+}
+
+/* ---------- RENDER: peça nova (cadastro) ---------- */
+function renderNova(codigo) {
+  const podeCadastrar = USER.perfil === 'DONO'; // requer permissão de alterar preço de custo
+
+  if (!podeCadastrar) {
+    $('#result').innerHTML = `
+    <div class="card">
+      <div class="card-top nova">
+        <div class="card-icon ic-nova">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+        </div>
+        <div class="card-h">
+          <div class="code mono">${esc(codigo)}</div>
+          <h3>Peça não cadastrada</h3>
+          <span class="pill p-new"><span class="dot" style="background:var(--laranja)"></span>Nova</span>
+        </div>
+      </div>
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        Cadastrar peça envolve o preço de custo, então só o <b>Dono</b> pode. Faça login como Dono para cadastrar esta peça.
+      </div>
+    </div>`;
+    focusScan();
+    return;
+  }
+
+  $('#result').innerHTML = `
+  <div class="card">
+    <div class="card-top nova">
+      <div class="card-icon ic-nova">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      </div>
+      <div class="card-h">
+        <div class="code mono">${esc(codigo)}</div>
+        <h3>Cadastrar peça nova</h3>
+        <span class="pill p-new"><span class="dot" style="background:var(--laranja)"></span>Código lido, não existe ainda</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="row">
+        <div class="inp-group"><label>Nome da peça *</label><input id="n-nome" class="field-inp" placeholder="Ex: Vela de ignição NGK" autofocus></div>
+      </div>
+      <div class="row c3" style="margin-top:14px">
+        <div class="inp-group"><label>Custo (R$) *</label><input id="n-custo" class="field-inp mono" type="number" min="0" step="0.01" placeholder="0,00"></div>
+        <div class="inp-group"><label>Venda (R$) *</label><input id="n-venda" class="field-inp mono" type="number" min="0" step="0.01" placeholder="0,00"></div>
+        <div class="inp-group"><label>Unidade</label>
+          <select id="n-un" class="field-inp"><option>un</option><option>par</option><option>kit</option><option>L</option><option>kg</option><option>m</option></select>
+        </div>
+      </div>
+      <div class="row c3" style="margin-top:14px">
+        <div class="inp-group"><label>Estoque inicial</label><input id="n-est" class="field-inp mono" type="number" min="0" value="0"></div>
+        <div class="inp-group"><label>Estoque mínimo</label><input id="n-min" class="field-inp mono" type="number" min="0" value="0"></div>
+        <div class="inp-group"><label>Prateleira</label><input id="n-loc" class="field-inp" placeholder="Ex: A-3"></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" id="n-btn">Cadastrar peça</button>
+        <button class="btn btn-ghost" id="n-cancel">Cancelar</button>
+        <span class="margin-preview" id="n-margin"></span>
+      </div>
+    </div>
+  </div>`;
+
+  const custo = $('#n-custo'), venda = $('#n-venda'), margin = $('#n-margin');
+  const upd = () => {
+    const c = parseFloat(custo.value), v = parseFloat(venda.value);
+    margin.innerHTML = (c > 0 && v >= 0) ? 'Margem: <b>' + Math.round(((v - c) / c) * 100) + '%</b>' : '';
+  };
+  custo.addEventListener('input', upd); venda.addEventListener('input', upd);
+  $('#n-nome').focus();
+
+  $('#n-cancel').addEventListener('click', () => { resetIdle(); focusScan(); });
+  $('#n-btn').addEventListener('click', async () => {
+    const payload = {
+      nome: $('#n-nome').value.trim(),
+      codigoBarras: codigo,
+      precoCusto: custo.value, precoVenda: venda.value,
+      estoqueAtual: $('#n-est').value, estoqueMinimo: $('#n-min').value,
+      unidade: $('#n-un').value, localizacao: $('#n-loc').value.trim(),
+    };
+    if (!payload.nome) { toast('Informe o nome da peça.', 'warn'); $('#n-nome').focus(); return; }
+    const r = await api('/pecas', { method: 'POST', body: JSON.stringify(payload) });
+    if (r.status === 401) { toast('Sessão expirada.', 'bad'); logout(); return; }
+    if (r.status === 403) { toast('Sem permissão para cadastrar peça.', 'bad'); return; }
+    if (r.status === 409) { toast('Já existe peça com esse código.', 'warn'); return; }
+    if (!r.ok) { toast(r.body?.message || 'Falha ao cadastrar.', 'bad'); return; }
+    toast(r.body.nome + ' cadastrada!', 'ok');
+    addLog('new', r.body.nome, 'cadastrada · ' + r.body.estoqueAtual + ' ' + r.body.unidade + ' · ' + brl(r.body.precoVenda));
+    renderEncontrada(r.body);
+    focusScan();
+  });
+  focusScan(); // mantém o leitor pronto; o nome recebe foco explícito acima
+  $('#n-nome').focus();
+}
+
+function resetIdle() {
+  $('#result').innerHTML = `
+    <div class="idle">
+      <svg class="big" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14M21 5v14"/></svg>
+      <h3>Aguardando leitura</h3>
+      <div>Passe uma peça no leitor. Se já existir, você repõe o estoque; se for nova, cadastra na hora.</div>
+    </div>`;
+}
+
+/* ---------- LOG ---------- */
+function addLog(kind, nome, sub) {
+  logCount++;
+  $('#log-count').textContent = logCount;
+  const list = $('#log-list');
+  if (list.querySelector('.log-empty')) list.innerHTML = '';
+  const item = el('div', 'log-item');
+  const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  item.innerHTML = `
+    <div class="log-dot ${kind === 'new' ? 'd-new' : 'd-add'}">${kind === 'new' ? '🆕' : '📦'}</div>
+    <div class="log-main"><div class="t">${esc(nome)}</div><div class="s">${esc(sub)}</div></div>
+    <div class="log-time">${hora}</div>`;
+  list.prepend(item);
+}
+
+/* ---------- eventos ---------- */
+$('#li-btn').addEventListener('click', login);
+$('#li-senha').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+$('#tb-sair').addEventListener('click', logout);
+$('#scanInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); onScan($('#scanInput').value); } });
+// mantém o campo do leitor sempre pronto quando nada mais está em foco
+document.addEventListener('click', (e) => {
+  if (!TOKEN) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (['input', 'select', 'button', 'textarea', 'option'].includes(tag)) return;
+  focusScan();
+});
+</script>
+</body>
+</html>

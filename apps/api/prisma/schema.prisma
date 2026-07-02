@@ -193,6 +193,7 @@ model Peca {
   id            String          @id @default(cuid())
   nome          String
   sku           String?         @unique
+  codigoBarras  String?         @unique @map("codigo_barras")
   tipo          TipoItemEstoque @default(PECA)
   fornecedorId  String?         @map("fornecedor_id")
   precoCusto    Decimal         @map("preco_custo") @db.Decimal(10, 2)
