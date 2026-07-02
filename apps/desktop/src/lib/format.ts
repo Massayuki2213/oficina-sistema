@@ -56,6 +56,36 @@ export const CORES_STATUS_ORCAMENTO: Record<string, string> = {
   EXPIRADO: 'bg-amarelo-bg text-amarelo',
 };
 
+// Agenda / visitas
+export const horaBR = (iso: string) =>
+  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+export const diaLongoBR = (iso: string) => {
+  const s = new Date(iso).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+
+export const LABEL_TIPO_VISITA: Record<string, string> = {
+  REVISAO: 'Revisão',
+  RETORNO: 'Retorno',
+  ORCAMENTO: 'Orçamento',
+  GARANTIA: 'Garantia',
+};
+
+export const LABEL_STATUS_VISITA: Record<string, string> = {
+  AGENDADA: 'Agendada',
+  CONFIRMADA: 'Confirmada',
+  REALIZADA: 'Realizada',
+  FALTOU: 'Faltou',
+};
+
+export const CORES_STATUS_VISITA: Record<string, string> = {
+  AGENDADA: 'bg-azul-bg text-azul',
+  CONFIRMADA: 'bg-verde-bg text-verde',
+  REALIZADA: 'bg-linha text-grafite/60',
+  FALTOU: 'bg-vermelho-bg text-vermelho',
+};
+
 export const LABEL_FORMA_PAGAMENTO: Record<string, string> = {
   A_VISTA: 'À vista',
   PIX: 'PIX',
