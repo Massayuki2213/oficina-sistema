@@ -15,6 +15,7 @@ import { ordensRoutes } from './modules/ordens/ordens.routes.js';
 import { caixaRoutes } from './modules/caixa/caixa.routes.js';
 import { despesasRoutes } from './modules/despesas/despesas.routes.js';
 import { contasRoutes } from './modules/contas/contas.routes.js';
+import { relatoriosRoutes } from './modules/relatorios/relatorios.routes.js';
 import { AppError } from './lib/errors.js';
 
 export function buildApp() {
@@ -56,6 +57,7 @@ export function buildApp() {
   app.register(caixaRoutes, { prefix: '/caixa' });
   app.register(despesasRoutes, { prefix: '/despesas' });
   app.register(contasRoutes, { prefix: '/contas-receber' });
+  app.register(relatoriosRoutes, { prefix: '/relatorios' });
 
   // Tratador global: converte AppError (regra de negócio) na resposta certa.
   app.setErrorHandler((error, req, reply) => {
@@ -67,8 +69,6 @@ export function buildApp() {
     return reply.code(code).send({ message: code >= 500 ? 'Erro interno no servidor' : error.message });
   });
 
-  // TODO: financeiro — próximo módulo:
-  // app.register(relatoriosRoutes, { prefix: '/relatorios' }); // RN-13/14
   // app.register(ordensRoutes, { prefix: '/ordens' });
   // app.register(estoqueRoutes, { prefix: '/estoque' });
   // app.register(caixaRoutes, { prefix: '/caixa' });
