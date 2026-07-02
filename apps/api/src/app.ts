@@ -5,6 +5,7 @@ import { env } from './config/env.js';
 import { prisma } from './config/prisma.js';
 import { redis } from './config/redis.js';
 import { healthRoutes } from './routes/health.js';
+import { clientesRoutes } from './modules/clientes/clientes.routes.js';
 
 export function buildApp() {
   const app = Fastify({
@@ -22,9 +23,9 @@ export function buildApp() {
 
   // Rotas
   app.register(healthRoutes);
+  app.register(clientesRoutes, { prefix: '/clientes' });
 
-  // TODO: registrar os módulos (regras de negócio RN-01 a RN-21):
-  // app.register(clientesRoutes, { prefix: '/clientes' });
+  // TODO: registrar os demais módulos (regras de negócio RN-01 a RN-21):
   // app.register(orcamentosRoutes, { prefix: '/orcamentos' });
   // app.register(ordensRoutes, { prefix: '/ordens' });
   // app.register(estoqueRoutes, { prefix: '/estoque' });
