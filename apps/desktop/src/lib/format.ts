@@ -25,3 +25,21 @@ export const LABEL_STATUS_OS: Record<string, string> = {
   ENTREGUE: 'Entregue',
   CANCELADA: 'Cancelada',
 };
+
+export const dataBR = (iso: string) =>
+  new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+
+export const LABEL_FORMA_PAGAMENTO: Record<string, string> = {
+  A_VISTA: 'À vista',
+  PIX: 'PIX',
+  CARTAO: 'Cartão',
+  PARCELADO: 'Parcelado',
+  FIADO: 'Fiado',
+};
+
+export const LABEL_ORIGEM: Record<string, string> = {
+  OS: 'Ordem de Serviço',
+  VENDA_BALCAO: 'Venda no balcão',
+  DESPESA: 'Despesa',
+  APORTE: 'Aporte',
+};

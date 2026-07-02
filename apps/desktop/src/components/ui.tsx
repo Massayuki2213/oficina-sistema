@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { PERIODOS, type PeriodoKey } from '../lib/periodo';
 
 // Peças de UI reutilizadas pelas telas (mesma linguagem visual do Hermes).
 
@@ -103,5 +104,49 @@ export function VazioOuCarregando({ carregando, vazio, colSpan }: { carregando: 
         {carregando ? 'Carregando...' : 'Nada encontrado.'}
       </td>
     </tr>
+  );
+}
+
+// Cartão de indicador (usado nas telas financeiras).
+export function Kpi({ label, valor, sub, icon, cor = 'bg-fundo text-grafite/50' }: { label: string; valor: string; sub?: ReactNode; icon?: string; cor?: string }) {
+  return (
+    <div className="bg-white rounded-2xl p-5 border border-linha shadow-sm relative">
+      {icon && <div className={`absolute top-4 right-4 w-11 h-11 rounded-xl grid place-items-center text-xl font-bold ${cor}`}>{icon}</div>}
+      <div className="text-[13px] text-grafite/50 font-semibold">{label}</div>
+      <div className="text-3xl font-extrabold mt-2 leading-none">{valor}</div>
+      {sub && <div className="text-xs mt-2 font-semibold text-grafite/50">{sub}</div>}
+    </div>
+  );
+}
+
+// Seletor de período (Hoje / 7 dias / Este mês / Tudo).
+export function Periodo({ value, onChange }: { value: PeriodoKey; onChange: (k: PeriodoKey) => void }) {
+  return (
+    <div className="flex items-center gap-1 bg-white border border-linha rounded-xl p-1">
+      {PERIODOS.map((p) => (
+        <button
+          key={p.key}
+          onClick={() => onChange(p.key)}
+          className={`px-3 py-1.5 rounded-lg text-sm font-bold transition ${
+            value === p.key ? 'bg-petroleo text-white shadow-sm' : 'text-grafite/60 hover:bg-fundo'
+          }`}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Tela de bloqueio quando o perfil não tem acesso à área.
+export function Restrito({ children }: { children?: ReactNode }) {
+  return (
+    <div className="grid place-items-center h-[60vh] text-center">
+      <div>
+        <div className="text-5xl mb-3">🔒</div>
+        <h2 className="text-xl font-extrabold text-petroleo">Acesso restrito</h2>
+        <p className="text-grafite/50 mt-1 text-sm">{children ?? 'Esta área é exclusiva do Dono.'}</p>
+      </div>
+    </div>
   );
 }

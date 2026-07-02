@@ -7,6 +7,10 @@ import Clientes from './pages/Clientes';
 import Carros from './pages/Carros';
 import Servicos from './pages/Servicos';
 import Estoque from './pages/Estoque';
+import Caixa from './pages/Caixa';
+import Despesas from './pages/Despesas';
+import Contas from './pages/Contas';
+import Relatorios from './pages/Relatorios';
 import EmBreve from './pages/EmBreve';
 
 export default function App() {
@@ -21,6 +25,10 @@ export default function App() {
         <Route path="/carros" element={<Carros />} />
         <Route path="/servicos" element={<Servicos />} />
         <Route path="/estoque" element={<Estoque />} />
+        <Route path="/caixa" element={<Caixa />} />
+        <Route path="/despesas" element={<Despesas />} />
+        <Route path="/contas-receber" element={<Contas />} />
+        <Route path="/relatorios" element={<Relatorios />} />
         <Route path="*" element={<EmBreve />} />
       </Routes>
     </Layout>
