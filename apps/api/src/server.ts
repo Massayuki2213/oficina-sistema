@@ -1,7 +1,7 @@
 import { buildApp } from './app.js';
-import { env } from './config/env.js';
-import { connectDatabase, disconnectDatabase } from './config/prisma.js';
-import { connectRedis, disconnectRedis } from './config/redis.js';
+import { env } from './lib/env.js';
+import { connectDatabase, disconnectDatabase } from './lib/prisma.js';
+import { connectRedis, disconnectRedis } from './lib/redis.js';
 
 async function main() {
   await connectDatabase();

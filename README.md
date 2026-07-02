@@ -17,16 +17,21 @@ oficina-sistema/
 │   │   │   ├── schema.prisma   # modelo de dados (banco)
 │   │   │   └── seed.ts         # dados iniciais
 │   │   └── src/
-│   │       ├── config/         # env, prisma (banco), redis (cache)
-│   │       ├── modules/        # domínios: clientes, orçamentos, ordens, estoque, caixa...
-│   │       ├── routes/         # rotas HTTP
-│   │       ├── app.ts
-│   │       └── server.ts
+│   │       ├── lib/            # infra: env, prisma (banco), redis (cache)
+│   │       ├── modules/        # um por domínio (routes + service + schema)
+│   │       │   ├── health/     #   status da API/banco/cache
+│   │       │   └── clientes/   #   CRUD + busca + cache
+│   │       ├── app.ts          # monta o Fastify e registra os módulos
+│   │       └── server.ts       # sobe o servidor
 │   │
 │   └── desktop/            # 💻 App Desktop — Electron + React (migra do protótipo)
 │
 └── packages/
-    └── shared/             # tipos/enums compartilhados entre API e Desktop
+    └── shared/             # contrato compartilhado (API + Desktop)
+        └── src/
+            ├── enums.ts        # enums do domínio + rótulos pt-BR
+            ├── entities.ts     # entidades do domínio (seção 4)
+            └── permissions.ts  # permissões por perfil
 ```
 
 ## 🧱 Stack

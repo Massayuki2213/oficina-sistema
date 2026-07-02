@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../config/prisma.js';
-import { redis } from '../config/redis.js';
+import { prisma } from '../../lib/prisma.js';
+import { redis } from '../../lib/redis.js';
 
 export async function healthRoutes(app: FastifyInstance) {
   // Verifica se API, banco e cache estão de pé.

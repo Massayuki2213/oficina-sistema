@@ -1,10 +1,10 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
-import { env } from './config/env.js';
-import { prisma } from './config/prisma.js';
-import { redis } from './config/redis.js';
-import { healthRoutes } from './routes/health.js';
+import { env } from './lib/env.js';
+import { prisma } from './lib/prisma.js';
+import { redis } from './lib/redis.js';
+import { healthRoutes } from './modules/health/health.routes.js';
 import { clientesRoutes } from './modules/clientes/clientes.routes.js';
 
 export function buildApp() {

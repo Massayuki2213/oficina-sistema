@@ -1,5 +1,5 @@
-import { prisma } from '../../config/prisma.js';
-import { redis } from '../../config/redis.js';
+import { prisma } from '../../lib/prisma.js';
+import { redis } from '../../lib/redis.js';
 import type { CreateClienteInput, UpdateClienteInput } from './clientes.schema.js';
 
 // Cache da listagem no Redis (banco + cache trabalhando juntos).
