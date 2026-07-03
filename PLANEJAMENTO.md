@@ -1,16 +1,16 @@
 # Hermes — Sistema de Gestão para Oficina Mecânica
-### Documento de Planejamento e Arquitetura — v1.1
+### Documento de Planejamento e Arquitetura — v1.2
 
 > **Nome do sistema:** `Hermes` *(nome da oficina — Hermes, o deus grego da velocidade e do comércio: combina com a proposta de agilidade)*
 > **Cliente:** Oficina Hermes
 > **Objetivo:** Demonstrar um sistema completo, ágil e flexível que substitua o caderno (hoje é tudo na mão) e organize todo o fluxo da oficina, do orçamento ao lucro.
-> **Data:** 01/07/2026
+> **Data:** 01/07/2026 · **Atualizado:** 03/07/2026 (v1.2 — status real do projeto + roadmap até 100% funcional)
 
 ---
 
 ## 1. Visão Geral
 
-O `OficinaFlow` é um sistema **desktop** instalado nos computadores da oficina, com **banco de dados compartilhado na nuvem** — ou seja, todos os PCs enxergam a mesma informação em tempo real. O foco é **agilidade no balcão** (fazer um orçamento em segundos) e **controle financeiro** (saber quanto entrou, saiu e sobrou).
+O `Hermes` é um sistema **desktop** instalado nos computadores da oficina, com **banco de dados compartilhado na nuvem** — ou seja, todos os PCs enxergam a mesma informação em tempo real. O foco é **agilidade no balcão** (fazer um orçamento em segundos) e **controle financeiro** (saber quanto entrou, saiu e sobrou).
 
 ### O que o sistema resolve (a "dor" da oficina)
 | Problema hoje | Como o sistema resolve |
@@ -282,25 +282,75 @@ Telas que vou detalhar na próxima fase: Dashboard, Cadastro de Cliente/Carro, N
 
 ---
 
-## 11. Fases de Entrega (Roadmap)
+## 11. Status Atual e Roadmap até 100% Funcional
 
-Para demonstrar rápido e não travar, sugiro entregar por fases:
+### 11.1 O que já está pronto ✅ (Fases 1 a 4 concluídas)
 
-| Fase | O que entra | Objetivo |
-|---|---|---|
-| **Fase 1 — Protótipo (demonstração)** | Telas navegáveis + cadastro de cliente/carro + orçamento + fluxo até OS | **Mostrar ao seu tio** o "jeitão" e a agilidade |
-| **Fase 2 — MVP funcional** | Estoque com baixa automática, livro-caixa, login/perfis | Já dá para usar de verdade na oficina |
-| **Fase 3 — Financeiro completo** | Despesas, contas a receber, relatórios e gráficos de lucro | Controle total do dinheiro |
-| **Fase 4 — Extras** | Agenda/visitas, WhatsApp, garantia, backup, tema escuro | Diferenciais competitivos |
+**Infraestrutura e back-end**
+- Monorepo (npm workspaces) com **API** e **app Desktop** separados.
+- **PostgreSQL 16 + Redis 7** em Docker; segredos em `.env`.
+- **API Node.js + Fastify + TypeScript**, **Prisma ORM** e cache Redis.
+- **Login + JWT** com os 3 perfis (Dono, Atendente, Mecânico) e permissões por ação.
+- **13 módulos** de negócio, com as regras RN-01 a RN-21 aplicadas no núcleo.
+
+**App (telas funcionais, ligadas à API de verdade)**
+- 🏠 Dashboard · 👥 Clientes · 🚗 Carros · 🔧 Serviços · 📦 Estoque (com **leitor de código de barras**)
+- 📄 Orçamentos (montador + **aprovar → OS em 1 clique**, baixando estoque) · 🛠️ Ordens de Serviço (fluxo de status + **receber pagamento**) · 📅 Agenda
+- 💰 Livro-Caixa · 📉 Despesas · 🧾 Contas a Receber · 📊 Relatórios (com gráficos)
+- **Cenário de demonstração** completo e consistente (seed) + telas que **não quebram** em resoluções menores.
+
+> Traduzindo: **o fluxo de negócio inteiro — do orçamento ao lucro — já funciona.** É a parte mais difícil, e ela está de pé.
+
+### 11.2 Onde estamos (avaliação honesta)
+
+| Régua | % |
+|---|---|
+| Protótipo funcional / demonstração | ~75% |
+| **Uso diário real na oficina (usabilidade)** | **~40%** |
+| Produto comercial (vender a outras oficinas) | ~30% |
+
+O que segura a usabilidade **não é funcionalidade** — é o que aparece quando alguém usa **todo dia e comete erros**: corrigir um cadastro, imprimir um comprovante, ver o histórico do cliente e não perder dados se o PC falhar.
+
+### 11.3 Roadmap de conclusão
+
+**✅ Fase 1–4 — Base + fluxo completo** *(concluídas)*
+Cadastros, orçamento → OS, estoque com baixa automática, financeiro completo, agenda, login/perfis.
+
+**🎯 Fase 5 — Usabilidade essencial** *(próxima — leva a usabilidade de ~40% para ~70%)*
+- **Editar/excluir** registros: cliente, carro, serviço, peça e orçamento em rascunho *(hoje o sistema só cria)*.
+- **Ficha do cliente** e **histórico do carro por placa** (RN-16/17): carros, OS passadas e fiado em aberto num clique.
+- **Impressão / PDF** do Orçamento e da OS — o comprovante que a oficina entrega ao cliente.
+- **Backup automático** diário do banco — para não perder tudo se o computador falhar.
+- **Máscaras** (CPF/CNPJ, telefone, placa, dinheiro) e **avisos "toast"** no lugar dos pop-ups do navegador.
+
+**Fase 6 — Produção e administração** *(vira um app "de verdade", instalável e autônomo → ~85%)*
+- **Empacotar em Electron** (programa instalável no Windows) + build de produção da API.
+- **Tela de Configurações**: dados da oficina, logo no PDF, margem padrão, % de desconto que exige senha.
+- **Gestão de usuários** pela interface (criar/editar, trocar senha, ativar/inativar) — elimina a senha padrão `hermes123`.
+- **Alertas ativos**: revisão vencida (RN-20), conflito de horário na agenda (RN-19), bloqueio de fiado em atraso (RN-11.2), expiração automática de orçamento (RN-06).
+- **Log de auditoria** visível (quem fez o quê).
+
+**Fase 7 — Diferenciais e fiscal** *(quando fizer sentido para o negócio)*
+- **OS de garantia** (RN-18) e **venda de balcão** avulsa.
+- Envio de Orçamento/OS por **WhatsApp**.
+- **Comissão por mecânico** e produtividade.
+- **Nota fiscal** (NF-e / NFC-e).
+- Módulo de **Ajuda/Suporte** (RN-21).
+
+> Ao concluir a **Fase 5**, o sistema já aguenta o dia a dia da oficina (~70% de usabilidade). Com a **Fase 6**, vira um produto instalável e autônomo (~85%). A **Fase 7** são diferenciais competitivos.
 
 ---
 
-## 12. Próximos Passos
+## 12. Próximos Passos (a partir daqui)
 
-1. **Você valida este documento** (ajusta o que quiser).
-2. Escolhemos o **nome final** do sistema e a **cor** (posso mostrar 2-3 variações).
-3. Eu monto o **protótipo clicável (Fase 1)** para você levar ao seu tio.
-4. Com o "sim" dele, partimos para o **MVP funcional**.
+Documento e projeto estão **alinhados**. Começamos a **Fase 5 — Usabilidade essencial**, nesta ordem de maior impacto:
+
+1. **Editar/corrigir registros** — remove a maior frustração do dia a dia.
+2. **Imprimir / PDF do Orçamento e da OS** — o que o cliente leva na mão.
+3. **Ficha do cliente + histórico do carro** — consulta rápida no balcão (RN-16/17).
+4. **Backup automático do banco** — segurança dos dados.
+
+Concluída a Fase 5, seguimos para a **Fase 6** (Electron + Configurações + gestão de usuários) e, por fim, os diferenciais da **Fase 7**.
 
 ---
 
