@@ -156,7 +156,7 @@ function NovaPeca({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => 
           <input type="number" step="0.01" value={form.precoVenda} onChange={(e) => set('precoVenda', e.target.value)} className={inputCls} />
         </Campo>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Campo label="Estoque">
           <input type="number" value={form.estoqueAtual} onChange={(e) => set('estoqueAtual', e.target.value)} className={inputCls} />
         </Campo>

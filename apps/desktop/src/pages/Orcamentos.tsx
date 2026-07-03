@@ -311,7 +311,7 @@ function NovoOrcamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: (
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {podeDesconto && (
           <Campo label="Desconto (R$)">
             <input type="number" step="0.01" value={desconto} onChange={(e) => setDesconto(e.target.value)} className={inputCls} />

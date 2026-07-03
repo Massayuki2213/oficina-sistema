@@ -106,7 +106,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       </header>
 
       {/* Conteúdo */}
-      <main className="col-start-2 overflow-y-auto p-7">{children}</main>
+      <main className="col-start-2 overflow-y-auto p-4 sm:p-6 lg:p-7">{children}</main>
     </div>
   );
 }

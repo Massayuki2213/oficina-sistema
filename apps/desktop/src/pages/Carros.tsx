@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
-import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Carro {
   id: string;
@@ -144,7 +144,7 @@ function NovoCarro({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () =>
           <input value={form.modelo} onChange={(e) => set('modelo', e.target.value)} className={inputCls} />
         </Campo>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Campo label="Cor">
           <input value={form.cor} onChange={(e) => set('cor', e.target.value)} className={inputCls} />
         </Campo>

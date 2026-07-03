@@ -89,7 +89,7 @@ export default function Relatorios() {
         <Periodo value={periodo} onChange={setPeriodo} />
       </PageHeader>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Kpi label="Faturamento" valor={brl(resumo?.faturamento ?? 0)} icon="💵" cor="bg-verde-bg text-verde" sub="o que entrou no caixa" />
         <Kpi label="Despesas" valor={brl(resumo?.despesas ?? 0)} icon="📉" cor="bg-vermelho-bg text-vermelho" sub="o que saiu" />
         <Kpi

@@ -61,7 +61,7 @@ export default function Dashboard() {
         <p className="text-grafite/50 text-sm mt-0.5">Resumo rápido da oficina</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card icon="🛠️" label="OS em aberto" valor={String(abertas.length)} cor="bg-azul-bg text-azul" />
         <Card
           icon="💰"

@@ -62,7 +62,13 @@ export function BtnGhost({ children, onClick }: { children: ReactNode; onClick?:
 }
 
 export function Painel({ children }: { children: ReactNode }) {
-  return <div className="bg-white rounded-2xl border border-linha shadow-sm overflow-hidden">{children}</div>;
+  // O wrapper interno rola na horizontal quando o conteúdo (tabelas largas) não
+  // cabe, em vez de cortar. A tabela ganha uma largura mínima só quando aperta.
+  return (
+    <div className="bg-white rounded-2xl border border-linha shadow-sm overflow-hidden">
+      <div className="overflow-x-auto [&>table]:min-w-[620px]">{children}</div>
+    </div>
+  );
 }
 
 export function Badge({ children, cor = 'bg-linha text-grafite/60' }: { children: ReactNode; cor?: string }) {
