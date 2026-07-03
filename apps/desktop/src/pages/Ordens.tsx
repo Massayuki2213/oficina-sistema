@@ -3,6 +3,7 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl, dataBR, LABEL_STATUS_OS, CORES_STATUS_OS } from '../lib/format';
 import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { DocumentoImpressao, OSDoc } from '../components/Impressao';
 
 interface OSItem {
   id: string;
@@ -137,6 +138,8 @@ const ACOES: Record<string, { status: string; label: string }[]> = {
 const CANCELAVEIS = ['ABERTA', 'AGUARDANDO_PECA', 'EM_EXECUCAO'];
 
 interface OSFull extends OSItem {
+  cliente?: { nome: string; telefone?: string | null; cpfCnpj?: string | null };
+  carro?: { placa: string; modelo: string; marca?: string; ano?: number | null; kmAtual?: number | null };
   servicos: { id: string; quantidade: number; precoUnit: number; servico?: { nome: string } }[];
   pecas: { id: string; quantidade: number; precoUnit: number; peca?: { nome: string } }[];
   orcamentoId: string | null;
@@ -160,6 +163,7 @@ function DetalheOrdem({
   const [mecanicos, setMecanicos] = useState<MecanicoOpt[]>([]);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
+  const [imprimir, setImprimir] = useState(false);
 
   async function recarregar() {
     const fresca = await api<OSFull>(`/ordens/${id}`);
@@ -192,12 +196,18 @@ function DetalheOrdem({
   const podeCobrar = concluida && !os?.pago && podeReceber;
 
   return (
+    <>
     <Modal
       title={os ? `OS #${os.numero}` : 'Ordem de Serviço'}
       size="lg"
       onClose={onFechar}
       footer={
         <>
+          {os && (
+            <button onClick={() => setImprimir(true)} className="mr-auto px-4 py-2.5 rounded-xl border-[1.6px] border-linha font-bold text-petroleo hover:bg-fundo">
+              🖨️ Imprimir
+            </button>
+          )}
           {os && CANCELAVEIS.includes(os.status) && <BtnGhost onClick={() => confirm('Cancelar esta OS?') && mudarStatus('CANCELADA')}>Cancelar OS</BtnGhost>}
           {os && ACOES[os.status]?.map((a) => (
             <BtnGhost key={a.status} onClick={() => mudarStatus(a.status)}>{a.label}</BtnGhost>
@@ -264,6 +274,12 @@ function DetalheOrdem({
         </>
       )}
     </Modal>
+    {imprimir && os && (
+      <DocumentoImpressao onFechar={() => setImprimir(false)}>
+        <OSDoc os={os} />
+      </DocumentoImpressao>
+    )}
+    </>
   );
 }
 

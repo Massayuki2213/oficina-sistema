@@ -3,6 +3,7 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl, dataBR, LABEL_STATUS_ORCAMENTO, CORES_STATUS_ORCAMENTO } from '../lib/format';
 import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { DocumentoImpressao, OrcamentoDoc } from '../components/Impressao';
 
 interface OrcItem {
   id: string;
@@ -372,8 +373,8 @@ function ListaItens({ linhas, vazio, textoVazio }: { linhas: LinhaUI[]; vazio: b
 interface OrcFull extends OrcItem {
   observacoes: string | null;
   validade: string;
-  cliente?: { nome: string; telefone?: string | null };
-  carro?: { placa: string; modelo: string; marca?: string };
+  cliente?: { nome: string; telefone?: string | null; cpfCnpj?: string | null };
+  carro?: { placa: string; modelo: string; marca?: string; ano?: number | null; kmAtual?: number | null };
   servicos: { id: string; quantidade: number; precoUnit: number; servico?: { nome: string } }[];
   pecas: { id: string; quantidade: number; precoUnit: number; peca?: { nome: string } }[];
 }
@@ -385,6 +386,7 @@ function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () 
   const [mecanicoId, setMecanicoId] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
+  const [imprimir, setImprimir] = useState(false);
 
   useEffect(() => {
     api<OrcFull>(`/orcamentos/${id}`).then(setOrc).catch(() => setErro('Não foi possível carregar'));
@@ -420,12 +422,18 @@ function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () 
     });
 
   return (
+    <>
     <Modal
       title={orc ? `Orçamento #${orc.numero}` : 'Orçamento'}
       size="lg"
       onClose={onFechar}
       footer={
         <>
+          {orc && (
+            <button onClick={() => setImprimir(true)} className="mr-auto px-4 py-2.5 rounded-xl border-[1.6px] border-linha font-bold text-petroleo hover:bg-fundo">
+              🖨️ Imprimir
+            </button>
+          )}
           {aprovavel && orc?.status === 'RASCUNHO' && <BtnGhost onClick={() => mudarStatus('ENVIADO')}>Marcar como enviado</BtnGhost>}
           {aprovavel && <BtnGhost onClick={() => mudarStatus('RECUSADO')}>Recusar</BtnGhost>}
           {aprovavel ? (
@@ -488,6 +496,12 @@ function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () 
         </>
       )}
     </Modal>
+    {imprimir && orc && (
+      <DocumentoImpressao onFechar={() => setImprimir(false)}>
+        <OrcamentoDoc orc={orc} />
+      </DocumentoImpressao>
+    )}
+    </>
   );
 }
 

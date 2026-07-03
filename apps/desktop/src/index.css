@@ -15,3 +15,21 @@ body,
 body {
   @apply bg-fundo text-grafite font-sans antialiased;
 }
+
+/* Impressão: esconde o app (#root) e mostra só a folha do documento (portal). */
+@media print {
+  #root {
+    display: none !important;
+  }
+  .doc-print-root {
+    position: static !important;
+    overflow: visible !important;
+    background: none !important;
+  }
+  .nao-imprimir {
+    display: none !important;
+  }
+  @page {
+    margin: 1.4cm;
+  }
+}
