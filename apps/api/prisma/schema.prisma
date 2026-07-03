@@ -149,6 +149,7 @@ model Carro {
   chassi      String?
   combustivel String?
   observacoes String?
+  ativo       Boolean  @default(true)
 
   cliente     Cliente  @relation(fields: [clienteId], references: [id])
   orcamentos  Orcamento[]

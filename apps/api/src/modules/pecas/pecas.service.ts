@@ -95,6 +95,13 @@ export async function updatePeca(id: string, data: UpdatePecaInput) {
   return toDTO(peca);
 }
 
+// Soft delete: mantém o histórico (OS antigas, movimentos), só tira do catálogo/estoque.
+export async function deactivatePeca(id: string) {
+  const peca = await prisma.peca.update({ where: { id }, data: { ativo: false } });
+  await invalidarCache();
+  return toDTO(peca);
+}
+
 // Entrada de estoque (RN-04): soma a quantidade, gera o movimento e
 // recalcula o custo médio ponderado quando informado um novo custo.
 export async function entradaEstoque(id: string, input: EntradaEstoqueInput) {

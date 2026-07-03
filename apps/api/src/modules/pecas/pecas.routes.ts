@@ -7,6 +7,9 @@ import * as service from './pecas.service.js';
 function isDuplicate(err: unknown) {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 }
+function isNotFound(err: unknown) {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
+}
 
 export async function pecasRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authenticate);
@@ -55,6 +58,18 @@ export async function pecasRoutes(app: FastifyInstance) {
       if (isDuplicate(err)) {
         return reply.code(409).send({ message: 'Já existe peça com esse código de barras ou SKU' });
       }
+      throw err;
+    }
+  });
+
+  // DELETE /pecas/:id — inativa (soft delete). Só quem pode apagar registros (Dono).
+  app.delete('/:id', { preHandler: [requirePermission('apagarRegistros')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      await service.deactivatePeca(id);
+      return reply.code(204).send();
+    } catch (err) {
+      if (isNotFound(err)) return reply.code(404).send({ message: 'Peça não encontrada' });
       throw err;
     }
   });

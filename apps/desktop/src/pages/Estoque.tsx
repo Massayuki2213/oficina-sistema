@@ -9,6 +9,7 @@ interface Peca {
   nome: string;
   sku: string | null;
   codigoBarras: string | null;
+  localizacao: string | null;
   precoCusto: number;
   precoVenda: number;
   margemPct: number | null;
@@ -20,11 +21,13 @@ interface Peca {
 
 export default function Estoque() {
   const { usuario } = useAuth();
-  const podeCadastrar = usuario?.perfil === 'DONO';
+  const podeGerenciar = usuario?.perfil === 'DONO';
   const [pecas, setPecas] = useState<Peca[]>([]);
   const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
-  const [modal, setModal] = useState(false);
+  const [novo, setNovo] = useState(false);
+  const [editar, setEditar] = useState<Peca | null>(null);
+  const [ocupado, setOcupado] = useState<string | null>(null);
 
   async function carregar(termo = '') {
     setCarregando(true);
@@ -38,13 +41,28 @@ export default function Estoque() {
     carregar();
   }, []);
 
+  async function excluir(p: Peca) {
+    if (!confirm(`Excluir a peça "${p.nome}"? Ela sai do estoque (o histórico é preservado).`)) return;
+    setOcupado(p.id);
+    try {
+      await api(`/pecas/${p.id}`, { method: 'DELETE' });
+      await carregar(busca);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao excluir');
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  const fecharForm = () => { setNovo(false); setEditar(null); };
+  const aposSalvar = () => { fecharForm(); carregar(busca); };
   const baixos = pecas.filter((p) => p.estoqueBaixo).length;
 
   return (
     <div>
       <PageHeader title="Estoque" subtitle={`${pecas.length} peça(s)${baixos ? ` · ${baixos} em falta` : ''}`}>
         <SearchBar value={busca} onChange={setBusca} onSubmit={() => carregar(busca)} placeholder="Nome, SKU ou código..." />
-        {podeCadastrar && <BtnPrimary onClick={() => setModal(true)}>+ Nova peça</BtnPrimary>}
+        {podeGerenciar && <BtnPrimary onClick={() => setNovo(true)}>+ Nova peça</BtnPrimary>}
       </PageHeader>
 
       <Painel>
@@ -58,10 +76,11 @@ export default function Estoque() {
               <th className={thCls}>Margem</th>
               <th className={thCls}>Estoque</th>
               <th className={thCls}>Situação</th>
+              {podeGerenciar && <th className={`${thCls} text-right`}>Ações</th>}
             </tr>
           </thead>
           <tbody>
-            <VazioOuCarregando carregando={carregando} vazio={pecas.length === 0} colSpan={7} />
+            <VazioOuCarregando carregando={carregando} vazio={pecas.length === 0} colSpan={podeGerenciar ? 8 : 7} />
             {pecas.map((p) => (
               <tr key={p.id} className="border-b border-fundo last:border-0 hover:bg-fundo/40 transition">
                 <td className={`${tdCls} font-bold`}>{p.nome}</td>
@@ -79,28 +98,35 @@ export default function Estoque() {
                     <Badge cor="bg-verde-bg text-verde">OK</Badge>
                   )}
                 </td>
+                {podeGerenciar && (
+                  <td className={`${tdCls} text-right whitespace-nowrap`}>
+                    <button onClick={() => setEditar(p)} className="text-grafite/50 hover:text-petroleo px-1.5" title="Editar">✏️</button>
+                    <button onClick={() => excluir(p)} disabled={ocupado === p.id} className="text-grafite/30 hover:text-vermelho px-1.5 disabled:opacity-40" title="Excluir">🗑</button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </Painel>
 
-      {modal && <NovaPeca onFechar={() => setModal(false)} onSalvo={() => { setModal(false); carregar(); }} />}
+      {(novo || editar) && <FormPeca peca={editar} onFechar={fecharForm} onSalvo={aposSalvar} />}
     </div>
   );
 }
 
-function NovaPeca({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
+function FormPeca({ peca, onFechar, onSalvo }: { peca: Peca | null; onFechar: () => void; onSalvo: () => void }) {
+  const editando = !!peca;
   const [form, setForm] = useState({
-    nome: '',
-    codigoBarras: '',
-    sku: '',
-    precoCusto: '',
-    precoVenda: '',
-    estoqueAtual: '0',
-    estoqueMinimo: '0',
-    unidade: 'un',
-    localizacao: '',
+    nome: peca?.nome ?? '',
+    codigoBarras: peca?.codigoBarras ?? '',
+    sku: peca?.sku ?? '',
+    precoCusto: peca ? String(peca.precoCusto) : '',
+    precoVenda: peca ? String(peca.precoVenda) : '',
+    estoqueAtual: peca ? String(peca.estoqueAtual) : '0',
+    estoqueMinimo: peca ? String(peca.estoqueMinimo) : '0',
+    unidade: peca?.unidade ?? 'un',
+    localizacao: peca?.localizacao ?? '',
   });
   const [erros, setErros] = useState<Record<string, string[]>>({});
   const [salvando, setSalvando] = useState(false);
@@ -114,7 +140,8 @@ function NovaPeca({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => 
     setSalvando(true);
     setErros({});
     try {
-      await api('/pecas', { method: 'POST', body: form });
+      if (editando) await api(`/pecas/${peca!.id}`, { method: 'PUT', body: form });
+      else await api('/pecas', { method: 'POST', body: form });
       onSalvo();
     } catch (err) {
       if (err instanceof ApiError) setErros(err.erros ?? { nome: [err.message] });
@@ -125,14 +152,14 @@ function NovaPeca({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => 
 
   return (
     <Modal
-      title="Nova peça"
+      title={editando ? 'Editar peça' : 'Nova peça'}
       onClose={onFechar}
       footer={
         <>
           {margem != null && <span className="text-sm text-grafite/50 mr-auto self-center">Margem: <b className="text-verde">{margem}%</b></span>}
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>
           <BtnPrimary onClick={salvar} disabled={salvando}>
-            {salvando ? 'Salvando...' : 'Salvar peça'}
+            {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Salvar peça'}
           </BtnPrimary>
         </>
       }
@@ -140,7 +167,7 @@ function NovaPeca({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => 
       <Campo label="Nome da peça" erro={erros.nome?.[0]}>
         <input value={form.nome} onChange={(e) => set('nome', e.target.value)} placeholder="Ex: Filtro de óleo" className={inputCls} />
       </Campo>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Campo label="Código de barras" erro={erros.codigoBarras?.[0]}>
           <input value={form.codigoBarras} onChange={(e) => set('codigoBarras', e.target.value)} className={`${inputCls} font-mono`} />
         </Campo>
@@ -148,7 +175,7 @@ function NovaPeca({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => 
           <input value={form.sku} onChange={(e) => set('sku', e.target.value)} className={inputCls} />
         </Campo>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Campo label="Custo (R$)" erro={erros.precoCusto?.[0]}>
           <input type="number" step="0.01" value={form.precoCusto} onChange={(e) => set('precoCusto', e.target.value)} className={inputCls} />
         </Campo>

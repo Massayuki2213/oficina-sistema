@@ -13,16 +13,19 @@ export async function listCarros(busca?: string) {
   }
 
   const carros = await prisma.carro.findMany({
-    where: busca
-      ? {
-          OR: [
-            { placa: { contains: normalizarPlaca(busca) } },
-            { marca: { contains: busca, mode: 'insensitive' } },
-            { modelo: { contains: busca, mode: 'insensitive' } },
-            { cliente: { nome: { contains: busca, mode: 'insensitive' } } },
-          ],
-        }
-      : {},
+    where: {
+      ativo: true,
+      ...(busca
+        ? {
+            OR: [
+              { placa: { contains: normalizarPlaca(busca) } },
+              { marca: { contains: busca, mode: 'insensitive' } },
+              { modelo: { contains: busca, mode: 'insensitive' } },
+              { cliente: { nome: { contains: busca, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    },
     orderBy: { placa: 'asc' },
     include: { cliente: { select: { id: true, nome: true, telefone: true } } },
   });
@@ -62,6 +65,13 @@ export async function createCarro(data: CreateCarroInput) {
 
 export async function updateCarro(id: string, data: UpdateCarroInput) {
   const carro = await prisma.carro.update({ where: { id }, data });
+  await invalidarCache();
+  return carro;
+}
+
+// Soft delete: mantém o histórico de OS, só tira o veículo da lista ativa.
+export async function deactivateCarro(id: string) {
+  const carro = await prisma.carro.update({ where: { id }, data: { ativo: false } });
   await invalidarCache();
   return carro;
 }

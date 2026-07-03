@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
-import { authenticate } from '../../lib/auth.js';
+import { authenticate, requirePermission } from '../../lib/auth.js';
 import { createCarroSchema, updateCarroSchema } from './carros.schema.js';
 import * as service from './carros.service.js';
 
@@ -66,6 +66,18 @@ export async function carrosRoutes(app: FastifyInstance) {
     } catch (err) {
       if (isNotFound(err)) return reply.code(404).send({ message: 'Veículo não encontrado' });
       if (isDuplicate(err)) return reply.code(409).send({ message: 'Já existe um veículo com essa placa' });
+      throw err;
+    }
+  });
+
+  // DELETE /carros/:id — inativa (soft delete). Só quem pode apagar registros (Dono).
+  app.delete('/:id', { preHandler: [requirePermission('apagarRegistros')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      await service.deactivateCarro(id);
+      return reply.code(204).send();
+    } catch (err) {
+      if (isNotFound(err)) return reply.code(404).send({ message: 'Veículo não encontrado' });
       throw err;
     }
   });

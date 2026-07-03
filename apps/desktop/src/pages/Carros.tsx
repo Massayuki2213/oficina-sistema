@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Carro {
   id: string;
+  clienteId: string;
   placa: string;
   marca: string;
   modelo: string;
   ano: number | null;
   cor: string | null;
   kmAtual: number | null;
+  combustivel: string | null;
   cliente?: { nome: string };
 }
 interface ClienteOpt {
@@ -18,10 +21,14 @@ interface ClienteOpt {
 }
 
 export default function Carros() {
+  const { usuario } = useAuth();
+  const ehDono = usuario?.perfil === 'DONO';
   const [carros, setCarros] = useState<Carro[]>([]);
   const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
-  const [modal, setModal] = useState(false);
+  const [novo, setNovo] = useState(false);
+  const [editar, setEditar] = useState<Carro | null>(null);
+  const [ocupado, setOcupado] = useState<string | null>(null);
 
   async function carregar(termo = '') {
     setCarregando(true);
@@ -35,11 +42,27 @@ export default function Carros() {
     carregar();
   }, []);
 
+  async function excluir(c: Carro) {
+    if (!confirm(`Excluir o veículo ${c.placa} (${c.marca} ${c.modelo})? Ele sai da lista (as OS antigas são preservadas).`)) return;
+    setOcupado(c.id);
+    try {
+      await api(`/carros/${c.id}`, { method: 'DELETE' });
+      await carregar(busca);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao excluir');
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  const fecharForm = () => { setNovo(false); setEditar(null); };
+  const aposSalvar = () => { fecharForm(); carregar(busca); };
+
   return (
     <div>
       <PageHeader title="Carros" subtitle={`${carros.length} veículo(s)`}>
         <SearchBar value={busca} onChange={setBusca} onSubmit={() => carregar(busca)} placeholder="Placa, modelo ou dono..." />
-        <BtnPrimary onClick={() => setModal(true)}>+ Novo veículo</BtnPrimary>
+        <BtnPrimary onClick={() => setNovo(true)}>+ Novo veículo</BtnPrimary>
       </PageHeader>
 
       <Painel>
@@ -52,10 +75,11 @@ export default function Carros() {
               <th className={thCls}>Cor</th>
               <th className={thCls}>KM</th>
               <th className={thCls}>Dono</th>
+              <th className={`${thCls} text-right`}>Ações</th>
             </tr>
           </thead>
           <tbody>
-            <VazioOuCarregando carregando={carregando} vazio={carros.length === 0} colSpan={6} />
+            <VazioOuCarregando carregando={carregando} vazio={carros.length === 0} colSpan={7} />
             {carros.map((c) => (
               <tr key={c.id} className="border-b border-fundo last:border-0 hover:bg-fundo/40 transition">
                 <td className={tdCls}>
@@ -70,20 +94,36 @@ export default function Carros() {
                 <td className={tdCls}>{c.cor ?? '—'}</td>
                 <td className={tdCls}>{c.kmAtual != null ? `${c.kmAtual.toLocaleString('pt-BR')} km` : '—'}</td>
                 <td className={tdCls}>{c.cliente?.nome ?? '—'}</td>
+                <td className={`${tdCls} text-right whitespace-nowrap`}>
+                  <button onClick={() => setEditar(c)} className="text-grafite/50 hover:text-petroleo px-1.5" title="Editar">✏️</button>
+                  {ehDono && (
+                    <button onClick={() => excluir(c)} disabled={ocupado === c.id} className="text-grafite/30 hover:text-vermelho px-1.5 disabled:opacity-40" title="Excluir">🗑</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </Painel>
 
-      {modal && <NovoCarro onFechar={() => setModal(false)} onSalvo={() => { setModal(false); carregar(); }} />}
+      {(novo || editar) && <FormCarro carro={editar} onFechar={fecharForm} onSalvo={aposSalvar} />}
     </div>
   );
 }
 
-function NovoCarro({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
+function FormCarro({ carro, onFechar, onSalvo }: { carro: Carro | null; onFechar: () => void; onSalvo: () => void }) {
+  const editando = !!carro;
   const [clientes, setClientes] = useState<ClienteOpt[]>([]);
-  const [form, setForm] = useState({ clienteId: '', placa: '', marca: '', modelo: '', ano: '', cor: '', kmAtual: '', combustivel: '' });
+  const [form, setForm] = useState({
+    clienteId: carro?.clienteId ?? '',
+    placa: carro?.placa ?? '',
+    marca: carro?.marca ?? '',
+    modelo: carro?.modelo ?? '',
+    ano: carro?.ano != null ? String(carro.ano) : '',
+    cor: carro?.cor ?? '',
+    kmAtual: carro?.kmAtual != null ? String(carro.kmAtual) : '',
+    combustivel: carro?.combustivel ?? '',
+  });
   const [erros, setErros] = useState<Record<string, string[]>>({});
   const [salvando, setSalvando] = useState(false);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -96,7 +136,8 @@ function NovoCarro({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () =>
     setSalvando(true);
     setErros({});
     try {
-      await api('/carros', { method: 'POST', body: form });
+      if (editando) await api(`/carros/${carro!.id}`, { method: 'PUT', body: form });
+      else await api('/carros', { method: 'POST', body: form });
       onSalvo();
     } catch (err) {
       if (err instanceof ApiError) setErros(err.erros ?? { placa: [err.message] });
@@ -107,13 +148,13 @@ function NovoCarro({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () =>
 
   return (
     <Modal
-      title="Novo veículo"
+      title={editando ? 'Editar veículo' : 'Novo veículo'}
       onClose={onFechar}
       footer={
         <>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>
           <BtnPrimary onClick={salvar} disabled={salvando}>
-            {salvando ? 'Salvando...' : 'Salvar veículo'}
+            {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Salvar veículo'}
           </BtnPrimary>
         </>
       }
@@ -128,7 +169,7 @@ function NovoCarro({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () =>
           ))}
         </select>
       </Campo>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Campo label="Placa" erro={erros.placa?.[0]}>
           <input value={form.placa} onChange={(e) => set('placa', e.target.value)} placeholder="ABC-1234" className={inputCls} />
         </Campo>
@@ -136,7 +177,7 @@ function NovoCarro({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () =>
           <input type="number" value={form.ano} onChange={(e) => set('ano', e.target.value)} className={inputCls} />
         </Campo>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Campo label="Marca" erro={erros.marca?.[0]}>
           <input value={form.marca} onChange={(e) => set('marca', e.target.value)} className={inputCls} />
         </Campo>
