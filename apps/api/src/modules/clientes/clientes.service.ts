@@ -44,7 +44,7 @@ export async function getCliente(id: string) {
   const cliente = await prisma.cliente.findUnique({
     where: { id },
     include: {
-      carros: true,
+      carros: { where: { ativo: true }, orderBy: { placa: 'asc' } },
       contasReceber: {
         where: { status: { in: ['PENDENTE', 'ATRASADA'] } },
         orderBy: { vencimento: 'asc' },

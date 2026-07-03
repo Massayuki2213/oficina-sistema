@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { iniciais } from '../lib/format';
+import { iniciais, dataBR, brl, LABEL_STATUS_OS, CORES_STATUS_OS } from '../lib/format';
 import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Cliente {
@@ -22,6 +22,7 @@ export default function Clientes() {
   const [carregando, setCarregando] = useState(true);
   const [novo, setNovo] = useState(false);
   const [editar, setEditar] = useState<Cliente | null>(null);
+  const [ficha, setFicha] = useState<Cliente | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
 
   async function carregar(termo = '') {
@@ -74,7 +75,7 @@ export default function Clientes() {
           <tbody>
             <VazioOuCarregando carregando={carregando} vazio={clientes.length === 0} colSpan={6} />
             {clientes.map((c) => (
-              <tr key={c.id} className="border-b border-fundo last:border-0 hover:bg-fundo/40 transition">
+              <tr key={c.id} onClick={() => setFicha(c)} className="border-b border-fundo last:border-0 hover:bg-fundo/40 transition cursor-pointer">
                 <td className={tdCls}>
                   <div className="flex items-center gap-2.5">
                     <span className="w-8 h-8 rounded-full bg-petroleo text-white grid place-items-center text-xs font-bold">{iniciais(c.nome)}</span>
@@ -85,7 +86,7 @@ export default function Clientes() {
                 <td className={`${tdCls} text-grafite/60`}>{c.cpfCnpj ?? '—'}</td>
                 <td className={tdCls}>{c.telefone ?? '—'}</td>
                 <td className={`${tdCls} font-semibold`}>{c._count?.carros ?? 0}</td>
-                <td className={`${tdCls} text-right whitespace-nowrap`}>
+                <td className={`${tdCls} text-right whitespace-nowrap`} onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => setEditar(c)} className="text-grafite/50 hover:text-petroleo px-1.5" title="Editar">✏️</button>
                   {ehDono && (
                     <button onClick={() => excluir(c)} disabled={ocupado === c.id} className="text-grafite/30 hover:text-vermelho px-1.5 disabled:opacity-40" title="Excluir">🗑</button>
@@ -98,8 +99,183 @@ export default function Clientes() {
       </Painel>
 
       {(novo || editar) && <FormCliente cliente={editar} onFechar={fecharForm} onSalvo={aposSalvar} />}
+      {ficha && (
+        <FichaCliente
+          clienteId={ficha.id}
+          onFechar={() => setFicha(null)}
+          onEditar={() => { setEditar(ficha); setFicha(null); }}
+        />
+      )}
     </div>
   );
+}
+
+// ------------------------------------------------------------------
+// Ficha do cliente: dados, veículos, fiado e histórico de OS (RN-16/17).
+// ------------------------------------------------------------------
+interface CarroFicha { id: string; placa: string; marca: string; modelo: string; ano: number | null; kmAtual: number | null }
+interface OSFicha { id: string; numero: number; dataAbertura: string; status: string; total: number | string; pago: boolean; carro?: { placa: string; modelo: string } | null }
+interface ParcelaFicha { id: string; parcela: number; totalParcelas: number; valor: number | string; vencimento: string; status: string }
+interface ClienteFicha {
+  id: string;
+  nome: string;
+  tipo: 'PF' | 'PJ';
+  cpfCnpj: string | null;
+  telefone: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  endereco: string | null;
+  observacoes: string | null;
+  dataCadastro: string;
+  carros: CarroFicha[];
+  ordens: OSFicha[];
+  contasReceber: ParcelaFicha[];
+  fiadoEmAberto: number;
+}
+
+function FichaCliente({ clienteId, onFechar, onEditar }: { clienteId: string; onFechar: () => void; onEditar: () => void }) {
+  const [c, setC] = useState<ClienteFicha | null>(null);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    api<ClienteFicha>(`/clientes/${clienteId}`).then(setC).catch(() => setErro('Não foi possível carregar a ficha'));
+  }, [clienteId]);
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const emAtraso = (p: ParcelaFicha) => p.status !== 'PAGA' && new Date(p.vencimento) < hoje;
+
+  return (
+    <Modal
+      title={c ? c.nome : 'Ficha do cliente'}
+      size="lg"
+      onClose={onFechar}
+      footer={
+        <>
+          <BtnGhost onClick={onFechar}>Fechar</BtnGhost>
+          <BtnPrimary onClick={onEditar}>✏️ Editar cadastro</BtnPrimary>
+        </>
+      }
+    >
+      {!c ? (
+        <div className="text-center text-grafite/40 py-8 text-sm">{erro || 'Carregando...'}</div>
+      ) : (
+        <>
+          {/* Cabeçalho */}
+          <div className="flex items-center gap-3">
+            <span className="w-12 h-12 rounded-full bg-petroleo text-white grid place-items-center font-bold">{iniciais(c.nome)}</span>
+            <div>
+              <Badge>{c.tipo === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}</Badge>
+              <div className="text-xs text-grafite/50 mt-1">Cliente desde {dataBR(c.dataCadastro)}</div>
+            </div>
+          </div>
+
+          {/* Contato */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 bg-fundo rounded-xl p-3 text-sm">
+            <InfoLinha rotulo="Telefone" valor={c.telefone} />
+            <InfoLinha rotulo="WhatsApp" valor={c.whatsapp} />
+            <InfoLinha rotulo="E-mail" valor={c.email} />
+            <InfoLinha rotulo="CPF / CNPJ" valor={c.cpfCnpj} />
+            <div className="col-span-2"><InfoLinha rotulo="Endereço" valor={c.endereco} /></div>
+          </div>
+
+          {/* Fiado em aberto */}
+          {c.fiadoEmAberto > 0 && (
+            <div className={`rounded-xl p-3 flex items-center gap-3 ${c.contasReceber.some(emAtraso) ? 'bg-vermelho-bg' : 'bg-amarelo-bg'}`}>
+              <span className="text-2xl">{c.contasReceber.some(emAtraso) ? '⚠️' : '🧾'}</span>
+              <div className="flex-1">
+                <div className="text-xs font-semibold text-grafite/60">Fiado em aberto</div>
+                <div className="text-xl font-extrabold text-petroleo">{brl(c.fiadoEmAberto)}</div>
+              </div>
+              <div className="text-right text-xs text-grafite/60">
+                {c.contasReceber.length} parcela(s)
+                {c.contasReceber.some(emAtraso) && <div className="text-vermelho font-bold">há parcela vencida</div>}
+              </div>
+            </div>
+          )}
+
+          {/* Veículos */}
+          <Secao titulo={`Veículos (${c.carros.length})`}>
+            {c.carros.length === 0 ? (
+              <Vazio texto="Nenhum veículo cadastrado" />
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-2">
+                {c.carros.map((v) => (
+                  <div key={v.id} className="border border-linha rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs bg-grafite text-white px-1.5 py-0.5 rounded">{v.placa}</span>
+                      <span className="font-bold text-sm">{v.marca} {v.modelo}</span>
+                    </div>
+                    <div className="text-xs text-grafite/50 mt-0.5">
+                      {v.ano ?? '—'}{v.kmAtual != null ? ` · ${v.kmAtual.toLocaleString('pt-BR')} km` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Secao>
+
+          {/* Parcelas em aberto */}
+          {c.contasReceber.length > 0 && (
+            <Secao titulo="Parcelas em aberto">
+              <div className="border border-linha rounded-lg divide-y divide-linha">
+                {c.contasReceber.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                    <span className="text-grafite/60">Parcela {p.parcela}/{p.totalParcelas}</span>
+                    <span className={`text-xs ${emAtraso(p) ? 'text-vermelho font-bold' : 'text-grafite/50'}`}>vence {dataBR(p.vencimento)}</span>
+                    {emAtraso(p) && <Badge cor="bg-vermelho-bg text-vermelho">em atraso</Badge>}
+                    <span className="ml-auto font-bold tabular-nums">{brl(p.valor)}</span>
+                  </div>
+                ))}
+              </div>
+            </Secao>
+          )}
+
+          {/* Histórico de OS */}
+          <Secao titulo={`Últimas ordens de serviço (${c.ordens.length})`}>
+            {c.ordens.length === 0 ? (
+              <Vazio texto="Nenhuma OS ainda" />
+            ) : (
+              <div className="border border-linha rounded-lg divide-y divide-linha">
+                {c.ordens.map((o) => (
+                  <div key={o.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                    <span className="font-mono font-bold text-grafite/50">#{o.numero}</span>
+                    <span className="text-grafite/60 whitespace-nowrap">{dataBR(o.dataAbertura)}</span>
+                    <span className="truncate">{o.carro?.modelo ?? '—'}</span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${CORES_STATUS_OS[o.status] ?? 'bg-linha'}`}>{LABEL_STATUS_OS[o.status] ?? o.status}</span>
+                    <span className="ml-auto font-bold tabular-nums">{brl(o.total)}</span>
+                    {o.pago && <span title="Pago" className="text-verde">💰</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Secao>
+
+          {c.observacoes && <div className="text-sm text-grafite/60 bg-amarelo-bg/40 rounded-lg p-3">📝 {c.observacoes}</div>}
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function InfoLinha({ rotulo, valor }: { rotulo: string; valor: string | null }) {
+  return (
+    <div>
+      <div className="text-[11px] font-bold text-grafite/40 uppercase tracking-wide">{rotulo}</div>
+      <div className="font-semibold">{valor || '—'}</div>
+    </div>
+  );
+}
+function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs font-bold text-grafite/50 mb-1.5">{titulo}</div>
+      {children}
+    </div>
+  );
+}
+function Vazio({ texto }: { texto: string }) {
+  return <div className="text-sm text-grafite/40 border border-dashed border-linha rounded-lg py-3 text-center">{texto}</div>;
 }
 
 function FormCliente({ cliente, onFechar, onSalvo }: { cliente: Cliente | null; onFechar: () => void; onSalvo: () => void }) {
