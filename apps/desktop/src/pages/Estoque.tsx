@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { brl } from '../lib/format';
 import { useAuth } from '../lib/auth';
-import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Peca {
   id: string;
@@ -100,8 +100,8 @@ export default function Estoque() {
                 </td>
                 {podeGerenciar && (
                   <td className={`${tdCls} text-right whitespace-nowrap`}>
-                    <button onClick={() => setEditar(p)} className="text-grafite/50 hover:text-petroleo px-1.5" title="Editar">✏️</button>
-                    <button onClick={() => excluir(p)} disabled={ocupado === p.id} className="text-grafite/30 hover:text-vermelho px-1.5 disabled:opacity-40" title="Excluir">🗑</button>
+                    <AcaoEditar onClick={() => setEditar(p)} />
+                    <AcaoExcluir onClick={() => excluir(p)} disabled={ocupado === p.id} />
                   </td>
                 )}
               </tr>

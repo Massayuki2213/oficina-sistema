@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Play, Check, Printer, Banknote, CheckCircle2 } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl, dataBR, LABEL_STATUS_OS, CORES_STATUS_OS } from '../lib/format';
@@ -91,7 +92,7 @@ export default function Ordens() {
                 <td className={tdCls}>
                   <div className="flex items-center gap-1.5">
                     <Badge cor={CORES_STATUS_OS[o.status]}>{LABEL_STATUS_OS[o.status] ?? o.status}</Badge>
-                    {o.pago && <span title="Pago" className="text-verde">💰</span>}
+                    {o.pago && <span title="Pago" className="text-verde"><CheckCircle2 size={15} /></span>}
                   </div>
                 </td>
               </tr>
@@ -126,11 +127,17 @@ export default function Ordens() {
 }
 
 // Ações de avanço do fluxo por status atual.
-const ACOES: Record<string, { status: string; label: string }[]> = {
-  ABERTA: [{ status: 'EM_EXECUCAO', label: '▶ Iniciar serviço' }],
-  AGUARDANDO_PECA: [{ status: 'EM_EXECUCAO', label: '▶ Iniciar serviço' }],
-  EM_EXECUCAO: [{ status: 'AGUARDANDO_PECA', label: 'Aguardar peça' }, { status: 'CONCLUIDA', label: '✓ Concluir' }],
-  AGUARDANDO_APROVACAO: [{ status: 'EM_EXECUCAO', label: '▶ Retomar' }],
+const iniciar = (
+  <span className="inline-flex items-center gap-1.5"><Play size={14} /> Iniciar serviço</span>
+);
+const ACOES: Record<string, { status: string; label: ReactNode }[]> = {
+  ABERTA: [{ status: 'EM_EXECUCAO', label: iniciar }],
+  AGUARDANDO_PECA: [{ status: 'EM_EXECUCAO', label: iniciar }],
+  EM_EXECUCAO: [
+    { status: 'AGUARDANDO_PECA', label: 'Aguardar peça' },
+    { status: 'CONCLUIDA', label: <span className="inline-flex items-center gap-1.5"><Check size={14} /> Concluir</span> },
+  ],
+  AGUARDANDO_APROVACAO: [{ status: 'EM_EXECUCAO', label: <span className="inline-flex items-center gap-1.5"><Play size={14} /> Retomar</span> }],
   CONCLUIDA: [{ status: 'ENTREGUE', label: 'Marcar entregue' }],
   ENTREGUE: [],
   CANCELADA: [],
@@ -204,8 +211,8 @@ function DetalheOrdem({
       footer={
         <>
           {os && (
-            <button onClick={() => setImprimir(true)} className="mr-auto px-4 py-2.5 rounded-xl border-[1.6px] border-linha font-bold text-petroleo hover:bg-fundo">
-              🖨️ Imprimir
+            <button onClick={() => setImprimir(true)} className="mr-auto inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-[1.6px] border-linha font-bold text-petroleo hover:bg-fundo">
+              <Printer size={16} /> Imprimir
             </button>
           )}
           {os && CANCELAVEIS.includes(os.status) && <BtnGhost onClick={() => confirm('Cancelar esta OS?') && mudarStatus('CANCELADA')}>Cancelar OS</BtnGhost>}
@@ -213,7 +220,9 @@ function DetalheOrdem({
             <BtnGhost key={a.status} onClick={() => mudarStatus(a.status)}>{a.label}</BtnGhost>
           ))}
           {podeCobrar ? (
-            <BtnPrimary onClick={() => onReceber({ id: os!.id, numero: os!.numero, total: os!.total })} disabled={ocupado}>💵 Receber pagamento</BtnPrimary>
+            <BtnPrimary onClick={() => onReceber({ id: os!.id, numero: os!.numero, total: os!.total })} disabled={ocupado}>
+              <span className="inline-flex items-center gap-1.5"><Banknote size={16} /> Receber pagamento</span>
+            </BtnPrimary>
           ) : (
             <BtnPrimary onClick={onFechar} disabled={ocupado}>Fechar</BtnPrimary>
           )}
@@ -227,7 +236,9 @@ function DetalheOrdem({
           <div className="flex items-center gap-3 flex-wrap">
             <Badge cor={CORES_STATUS_OS[os.status]}>{LABEL_STATUS_OS[os.status] ?? os.status}</Badge>
             {os.pago ? (
-              <Badge cor="bg-verde-bg text-verde">💰 Pago{os.formaPagamento ? ` · ${os.formaPagamento}` : ''}</Badge>
+              <Badge cor="bg-verde-bg text-verde">
+                <span className="inline-flex items-center gap-1"><CheckCircle2 size={12} /> Pago{os.formaPagamento ? ` · ${os.formaPagamento}` : ''}</span>
+              </Badge>
             ) : concluida ? (
               <Badge cor="bg-amarelo-bg text-amarelo">Aguardando pagamento</Badge>
             ) : null}
@@ -307,7 +318,7 @@ function ReceberPagamento({
         method: 'POST',
         body: { formaPagamento: forma, parcelas: Number(parcelas) || 1, primeiroVencimentoDias: Number(primeiroVenc) || 30 },
       });
-      alert(r.aVista ? `✅ Recebido! Entrou ${brl(os.total)} no caixa.` : `✅ OS entregue — ${r.parcelas} parcela(s) geradas em Contas a Receber.`);
+      alert(r.aVista ? `Recebido! Entrou ${brl(os.total)} no caixa.` : `OS entregue — ${r.parcelas} parcela(s) geradas em Contas a Receber.`);
       onRecebido();
     } catch (err) {
       setErro(err instanceof ApiError ? err.message : 'Erro ao receber');

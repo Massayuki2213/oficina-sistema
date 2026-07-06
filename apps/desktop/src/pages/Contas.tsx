@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Receipt, AlertTriangle } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl, dataBR } from '../lib/format';
@@ -57,8 +58,8 @@ export default function Contas() {
       </PageHeader>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <Kpi label="A receber" valor={brl(totais.pendente)} icon="🧾" cor="bg-azul-bg text-azul" />
-        <Kpi label="Em atraso" valor={brl(totais.emAtraso)} icon="⚠️" cor="bg-vermelho-bg text-vermelho" />
+        <Kpi label="A receber" valor={brl(totais.pendente)} icon={Receipt} cor="bg-azul-bg text-azul" />
+        <Kpi label="Em atraso" valor={brl(totais.emAtraso)} icon={AlertTriangle} cor="bg-vermelho-bg text-vermelho" />
       </div>
 
       <Painel>

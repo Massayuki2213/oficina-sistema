@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl, dataBR, LABEL_FORMA_PAGAMENTO } from '../lib/format';
@@ -56,12 +57,12 @@ export default function Caixa() {
       </PageHeader>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <Kpi label="Entradas" valor={brl(totais.entradas)} icon="↑" cor="bg-verde-bg text-verde" />
-        <Kpi label="Saídas" valor={brl(totais.saidas)} icon="↓" cor="bg-vermelho-bg text-vermelho" />
+        <Kpi label="Entradas" valor={brl(totais.entradas)} icon={ArrowUpRight} cor="bg-verde-bg text-verde" />
+        <Kpi label="Saídas" valor={brl(totais.saidas)} icon={ArrowDownRight} cor="bg-vermelho-bg text-vermelho" />
         <Kpi
           label="Saldo do período"
           valor={brl(totais.saldo)}
-          icon="💰"
+          icon={Wallet}
           cor={totais.saldo >= 0 ? 'bg-verde-bg text-verde' : 'bg-vermelho-bg text-vermelho'}
         />
       </div>
@@ -136,19 +137,19 @@ function NovoLancamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: 
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={() => set('tipo', 'ENTRADA')}
-          className={`py-2.5 rounded-lg font-bold text-sm border-[1.6px] transition ${
+          className={`py-2.5 rounded-lg font-bold text-sm border-[1.6px] transition inline-flex items-center justify-center gap-1.5 ${
             entrada ? 'border-verde bg-verde-bg text-verde' : 'border-linha text-grafite/50 hover:bg-fundo'
           }`}
         >
-          ↑ Entrada
+          <ArrowUpRight size={16} /> Entrada
         </button>
         <button
           onClick={() => set('tipo', 'SAIDA')}
-          className={`py-2.5 rounded-lg font-bold text-sm border-[1.6px] transition ${
+          className={`py-2.5 rounded-lg font-bold text-sm border-[1.6px] transition inline-flex items-center justify-center gap-1.5 ${
             !entrada ? 'border-vermelho bg-vermelho-bg text-vermelho' : 'border-linha text-grafite/50 hover:bg-fundo'
           }`}
         >
-          ↓ Saída
+          <ArrowDownRight size={16} /> Saída
         </button>
       </div>
       <Campo label="Descrição" erro={erros.descricao?.[0]}>

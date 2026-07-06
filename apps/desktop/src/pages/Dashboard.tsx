@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { ClipboardList, Wallet, Package, FileText, AlertTriangle, Car, Lock, CheckCircle2, type LucideIcon } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl, LABEL_STATUS_OS } from '../lib/format';
@@ -27,10 +28,12 @@ const CORES_STATUS: Record<string, string> = {
   ENTREGUE: 'bg-linha text-grafite/60',
 };
 
-function Card({ icon, label, valor, sub, cor }: { icon: string; label: string; valor: string; sub?: string; cor: string }) {
+function Card({ icon: Icon, label, valor, sub, cor }: { icon: LucideIcon; label: string; valor: ReactNode; sub?: string; cor: string }) {
   return (
     <div className="bg-white rounded-2xl p-5 border border-linha shadow-sm relative">
-      <div className={`absolute top-4 right-4 w-11 h-11 rounded-xl grid place-items-center text-xl ${cor}`}>{icon}</div>
+      <div className={`absolute top-4 right-4 w-11 h-11 rounded-xl grid place-items-center ${cor}`}>
+        <Icon size={22} strokeWidth={2.2} />
+      </div>
       <div className="text-[13px] text-grafite/50 font-semibold">{label}</div>
       <div className="text-3xl font-extrabold mt-2 leading-none">{valor}</div>
       {sub && <div className="text-xs mt-2 font-semibold text-grafite/50">{sub}</div>}
@@ -62,26 +65,30 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card icon="🛠️" label="OS em aberto" valor={String(abertas.length)} cor="bg-azul-bg text-azul" />
+        <Card icon={ClipboardList} label="OS em aberto" valor={String(abertas.length)} cor="bg-azul-bg text-azul" />
         <Card
-          icon="💰"
+          icon={Wallet}
           label="Caixa de hoje"
-          valor={caixa ? brl(caixa.saldo) : podeVerFinanceiro ? '—' : '🔒'}
+          valor={caixa ? brl(caixa.saldo) : podeVerFinanceiro ? '—' : <Lock size={24} className="text-grafite/30" />}
           sub={caixa ? `${brl(caixa.entradas)} entrou · ${brl(caixa.saidas)} saiu` : podeVerFinanceiro ? undefined : 'restrito ao Dono'}
           cor="bg-verde-bg text-verde"
         />
-        <Card icon="📦" label="Peças em falta" valor={String(baixos.length)} cor="bg-vermelho-bg text-vermelho" />
-        <Card icon="📄" label="Total de OS" valor={String(ordens.length)} cor="bg-amarelo-bg text-amarelo" />
+        <Card icon={Package} label="Peças em falta" valor={String(baixos.length)} cor="bg-vermelho-bg text-vermelho" />
+        <Card icon={FileText} label="Total de OS" valor={String(ordens.length)} cor="bg-amarelo-bg text-amarelo" />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-2xl border border-linha shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-linha font-bold text-petroleo">🛠️ OS em andamento</div>
+          <div className="px-5 py-4 border-b border-linha font-bold text-petroleo flex items-center gap-2">
+            <ClipboardList size={18} className="text-petroleo/70" /> OS em andamento
+          </div>
           <div className="p-2">
             {emAndamento.length === 0 && <div className="text-center text-grafite/40 py-8 text-sm">Nenhuma OS em andamento</div>}
             {emAndamento.slice(0, 6).map((o) => (
               <div key={o.id} className="flex items-center gap-3 px-3 py-3 border-b border-fundo last:border-0">
-                <div className="w-9 h-9 rounded-lg bg-fundo grid place-items-center">🚗</div>
+                <div className="w-9 h-9 rounded-lg bg-fundo grid place-items-center text-grafite/50">
+                  <Car size={18} />
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-sm">
                     #{o.numero} · {o.carro?.modelo ?? '—'}
@@ -97,12 +104,20 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white rounded-2xl border border-linha shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-linha font-bold text-petroleo">⚠️ Estoque baixo</div>
+          <div className="px-5 py-4 border-b border-linha font-bold text-petroleo flex items-center gap-2">
+            <AlertTriangle size={18} className="text-amarelo" /> Estoque baixo
+          </div>
           <div className="p-2">
-            {baixos.length === 0 && <div className="text-center text-grafite/40 py-8 text-sm">Estoque tranquilo 👍</div>}
+            {baixos.length === 0 && (
+              <div className="flex items-center justify-center gap-2 text-grafite/40 py-8 text-sm">
+                <CheckCircle2 size={16} className="text-verde" /> Estoque tranquilo
+              </div>
+            )}
             {baixos.map((p) => (
               <div key={p.id} className="flex items-center gap-3 px-3 py-3 border-b border-fundo last:border-0">
-                <div className="w-9 h-9 rounded-lg bg-vermelho-bg grid place-items-center">📦</div>
+                <div className="w-9 h-9 rounded-lg bg-vermelho-bg text-vermelho grid place-items-center">
+                  <Package size={18} />
+                </div>
                 <div className="flex-1 font-semibold text-sm">{p.nome}</div>
                 <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-vermelho-bg text-vermelho">
                   {p.estoqueAtual} {p.unidade}

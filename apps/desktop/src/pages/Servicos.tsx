@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl } from '../lib/format';
-import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Servico {
   id: string;
@@ -77,10 +77,8 @@ export default function Servicos() {
                 <td className={`${tdCls} font-bold`}>{brl(s.precoMaoDeObra)}</td>
                 <td className={tdCls}>{s.tempoEstimadoMin ? `${s.tempoEstimadoMin} min` : '—'}</td>
                 <td className={`${tdCls} text-right whitespace-nowrap`}>
-                  <button onClick={() => setEditar(s)} className="text-grafite/50 hover:text-petroleo px-1.5" title="Editar">✏️</button>
-                  {ehDono && (
-                    <button onClick={() => excluir(s)} disabled={ocupado === s.id} className="text-grafite/30 hover:text-vermelho px-1.5 disabled:opacity-40" title="Excluir">🗑</button>
-                  )}
+                  <AcaoEditar onClick={() => setEditar(s)} />
+                  {ehDono && <AcaoExcluir onClick={() => excluir(s)} disabled={ocupado === s.id} />}
                 </td>
               </tr>
             ))}

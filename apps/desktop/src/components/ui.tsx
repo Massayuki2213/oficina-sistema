@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { Search, Lock, X, Pencil, Trash2, type LucideIcon } from 'lucide-react';
 import { PERIODOS, type PeriodoKey } from '../lib/periodo';
 
 // Peças de UI reutilizadas pelas telas (mesma linguagem visual do Hermes).
@@ -30,7 +31,7 @@ export function SearchBar(props: { value: string; onChange: (v: string) => void;
       }}
       className="flex items-center gap-2 bg-white border border-linha rounded-xl px-3.5 py-2.5 w-full max-w-xs focus-within:border-laranja"
     >
-      <span className="text-grafite/40">🔍</span>
+      <Search size={16} className="text-grafite/40 shrink-0" />
       <input
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
@@ -75,6 +76,22 @@ export function Badge({ children, cor = 'bg-linha text-grafite/60' }: { children
   return <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${cor}`}>{children}</span>;
 }
 
+// Ações de linha (editar / excluir) — mesmo visual em todos os cadastros.
+export function AcaoEditar({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} title="Editar" className="text-grafite/50 hover:text-petroleo p-1.5 rounded-lg hover:bg-fundo transition">
+      <Pencil size={16} />
+    </button>
+  );
+}
+export function AcaoExcluir({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled} title="Excluir" className="text-grafite/40 hover:text-vermelho p-1.5 rounded-lg hover:bg-fundo disabled:opacity-40 transition">
+      <Trash2 size={16} />
+    </button>
+  );
+}
+
 export function Modal({ title, onClose, children, footer, size = 'md' }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode; size?: 'md' | 'lg' }) {
   const largura = size === 'lg' ? 'max-w-2xl' : 'max-w-md';
   return (
@@ -82,8 +99,8 @@ export function Modal({ title, onClose, children, footer, size = 'md' }: { title
       <div className={`bg-white rounded-2xl w-full ${largura} max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center px-6 py-5 border-b border-linha">
           <h3 className="text-lg font-extrabold text-petroleo">{title}</h3>
-          <button onClick={onClose} className="ml-auto text-2xl text-grafite/40 hover:text-grafite w-8 h-8">
-            ×
+          <button onClick={onClose} className="ml-auto text-grafite/40 hover:text-grafite w-8 h-8 grid place-items-center rounded-lg hover:bg-fundo">
+            <X size={20} />
           </button>
         </div>
         <div className="p-6 space-y-3.5">{children}</div>
@@ -115,10 +132,14 @@ export function VazioOuCarregando({ carregando, vazio, colSpan }: { carregando: 
 }
 
 // Cartão de indicador (usado nas telas financeiras).
-export function Kpi({ label, valor, sub, icon, cor = 'bg-fundo text-grafite/50' }: { label: string; valor: string; sub?: ReactNode; icon?: string; cor?: string }) {
+export function Kpi({ label, valor, sub, icon: Icon, cor = 'bg-fundo text-grafite/50' }: { label: string; valor: string; sub?: ReactNode; icon?: LucideIcon; cor?: string }) {
   return (
     <div className="bg-white rounded-2xl p-5 border border-linha shadow-sm relative">
-      {icon && <div className={`absolute top-4 right-4 w-11 h-11 rounded-xl grid place-items-center text-xl font-bold ${cor}`}>{icon}</div>}
+      {Icon && (
+        <div className={`absolute top-4 right-4 w-11 h-11 rounded-xl grid place-items-center ${cor}`}>
+          <Icon size={22} strokeWidth={2.2} />
+        </div>
+      )}
       <div className="text-[13px] text-grafite/50 font-semibold">{label}</div>
       <div className="text-3xl font-extrabold mt-2 leading-none">{valor}</div>
       {sub && <div className="text-xs mt-2 font-semibold text-grafite/50">{sub}</div>}
@@ -150,7 +171,9 @@ export function Restrito({ children }: { children?: ReactNode }) {
   return (
     <div className="grid place-items-center h-[60vh] text-center">
       <div>
-        <div className="text-5xl mb-3">🔒</div>
+        <div className="w-16 h-16 rounded-2xl bg-fundo grid place-items-center mx-auto mb-3 text-grafite/40">
+          <Lock size={30} strokeWidth={2} />
+        </div>
         <h2 className="text-xl font-extrabold text-petroleo">Acesso restrito</h2>
         <p className="text-grafite/50 mt-1 text-sm">{children ?? 'Esta área é exclusiva do Dono.'}</p>
       </div>

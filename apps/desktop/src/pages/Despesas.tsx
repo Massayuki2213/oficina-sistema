@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { TrendingDown, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl, dataBR } from '../lib/format';
 import { queryPeriodo, type PeriodoKey } from '../lib/periodo';
-import { PageHeader, Painel, Badge, Modal, Campo, BtnPrimary, BtnGhost, Kpi, Periodo, Restrito, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, Painel, Badge, Modal, Campo, BtnPrimary, BtnGhost, Kpi, Periodo, Restrito, AcaoExcluir, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Despesa {
   id: string;
@@ -82,9 +83,9 @@ export default function Despesas() {
       </PageHeader>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <Kpi label="Total no período" valor={brl(totais.total)} icon="📉" cor="bg-fundo text-grafite/50" />
-        <Kpi label="Já pago" valor={brl(totais.pago)} icon="✓" cor="bg-verde-bg text-verde" />
-        <Kpi label="A pagar" valor={brl(totais.aPagar)} icon="⏳" cor="bg-amarelo-bg text-amarelo" />
+        <Kpi label="Total no período" valor={brl(totais.total)} icon={TrendingDown} cor="bg-fundo text-grafite/50" />
+        <Kpi label="Já pago" valor={brl(totais.pago)} icon={CheckCircle2} cor="bg-verde-bg text-verde" />
+        <Kpi label="A pagar" valor={brl(totais.aPagar)} icon={Clock} cor="bg-amarelo-bg text-amarelo" />
       </div>
 
       <Painel>
@@ -106,7 +107,11 @@ export default function Despesas() {
                 <td className={`${tdCls} text-grafite/60 whitespace-nowrap`}>{dataBR(d.data)}</td>
                 <td className={`${tdCls} font-bold`}>
                   {d.descricao}
-                  {d.recorrente && <span className="ml-2 text-[10px] font-bold text-azul">↻ recorrente</span>}
+                  {d.recorrente && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold text-azul align-middle">
+                      <RefreshCw size={11} /> recorrente
+                    </span>
+                  )}
                   {d.fornecedor?.nome && <div className="text-xs text-grafite/50 font-normal">{d.fornecedor.nome}</div>}
                 </td>
                 <td className={tdCls}><Badge>{d.categoria}</Badge></td>
@@ -117,12 +122,12 @@ export default function Despesas() {
                 <td className={`${tdCls} text-right whitespace-nowrap`}>
                   {!d.pago && (
                     <>
-                      <button onClick={() => pagar(d)} disabled={ocupado === d.id} className="text-verde font-bold hover:underline disabled:opacity-50 mr-3">
+                      <button onClick={() => pagar(d)} disabled={ocupado === d.id} className="text-verde font-bold hover:underline disabled:opacity-50 mr-1 align-middle">
                         Pagar
                       </button>
-                      <button onClick={() => excluir(d)} disabled={ocupado === d.id} className="text-grafite/40 hover:text-vermelho disabled:opacity-50" title="Excluir">
-                        🗑
-                      </button>
+                      <span className="inline-flex align-middle">
+                        <AcaoExcluir onClick={() => excluir(d)} disabled={ocupado === d.id} />
+                      </span>
                     </>
                   )}
                 </td>

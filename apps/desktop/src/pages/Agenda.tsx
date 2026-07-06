@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { CalendarDays, StickyNote, X } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { horaBR, diaLongoBR, LABEL_TIPO_VISITA, LABEL_STATUS_VISITA, CORES_STATUS_VISITA } from '../lib/format';
 import { PageHeader, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls } from '../components/ui';
@@ -117,7 +118,9 @@ export default function Agenda() {
       ) : visitas.length === 0 ? (
         <Painel>
           <div className="text-center py-16">
-            <div className="text-5xl mb-3">📅</div>
+            <div className="w-16 h-16 rounded-2xl bg-fundo grid place-items-center mx-auto mb-3 text-grafite/40">
+              <CalendarDays size={30} strokeWidth={2} />
+            </div>
             <div className="font-bold text-petroleo">Nenhum agendamento no período</div>
             <div className="text-grafite/50 text-sm mt-1">Clique em "Novo agendamento" para marcar uma visita.</div>
           </div>
@@ -181,7 +184,11 @@ function LinhaVisita({
           )}
           {v.cliente?.telefone && <span> · {v.cliente.telefone}</span>}
         </div>
-        {v.observacoes && <div className="text-xs text-grafite/40 mt-0.5 truncate">📝 {v.observacoes}</div>}
+        {v.observacoes && (
+          <div className="text-xs text-grafite/40 mt-0.5 truncate flex items-center gap-1">
+            <StickyNote size={12} className="shrink-0" /> {v.observacoes}
+          </div>
+        )}
       </div>
 
       <Badge cor={CORES_STATUS_VISITA[v.status]}>{LABEL_STATUS_VISITA[v.status] ?? v.status}</Badge>
@@ -202,8 +209,8 @@ function LinhaVisita({
             </button>
           </>
         )}
-        <button onClick={() => onExcluir(v)} disabled={ocupado} className="text-grafite/30 hover:text-vermelho text-lg px-1 disabled:opacity-40" title="Cancelar">
-          ×
+        <button onClick={() => onExcluir(v)} disabled={ocupado} className="text-grafite/30 hover:text-vermelho p-1.5 rounded-lg hover:bg-fundo disabled:opacity-40" title="Cancelar">
+          <X size={16} />
         </button>
       </div>
     </div>

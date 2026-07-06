@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Modal, Campo, AcaoEditar, AcaoExcluir, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Carro {
   id: string;
@@ -95,10 +95,8 @@ export default function Carros() {
                 <td className={tdCls}>{c.kmAtual != null ? `${c.kmAtual.toLocaleString('pt-BR')} km` : '—'}</td>
                 <td className={tdCls}>{c.cliente?.nome ?? '—'}</td>
                 <td className={`${tdCls} text-right whitespace-nowrap`}>
-                  <button onClick={() => setEditar(c)} className="text-grafite/50 hover:text-petroleo px-1.5" title="Editar">✏️</button>
-                  {ehDono && (
-                    <button onClick={() => excluir(c)} disabled={ocupado === c.id} className="text-grafite/30 hover:text-vermelho px-1.5 disabled:opacity-40" title="Excluir">🗑</button>
-                  )}
+                  <AcaoEditar onClick={() => setEditar(c)} />
+                  {ehDono && <AcaoExcluir onClick={() => excluir(c)} disabled={ocupado === c.id} />}
                 </td>
               </tr>
             ))}

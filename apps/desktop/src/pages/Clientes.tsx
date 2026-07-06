@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Pencil, AlertTriangle, Receipt, CheckCircle2, StickyNote } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { iniciais, dataBR, brl, LABEL_STATUS_OS, CORES_STATUS_OS } from '../lib/format';
-import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Cliente {
   id: string;
@@ -87,10 +88,8 @@ export default function Clientes() {
                 <td className={tdCls}>{c.telefone ?? '—'}</td>
                 <td className={`${tdCls} font-semibold`}>{c._count?.carros ?? 0}</td>
                 <td className={`${tdCls} text-right whitespace-nowrap`} onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => setEditar(c)} className="text-grafite/50 hover:text-petroleo px-1.5" title="Editar">✏️</button>
-                  {ehDono && (
-                    <button onClick={() => excluir(c)} disabled={ocupado === c.id} className="text-grafite/30 hover:text-vermelho px-1.5 disabled:opacity-40" title="Excluir">🗑</button>
-                  )}
+                  <AcaoEditar onClick={() => setEditar(c)} />
+                  {ehDono && <AcaoExcluir onClick={() => excluir(c)} disabled={ocupado === c.id} />}
                 </td>
               </tr>
             ))}
@@ -153,7 +152,11 @@ function FichaCliente({ clienteId, onFechar, onEditar }: { clienteId: string; on
       footer={
         <>
           <BtnGhost onClick={onFechar}>Fechar</BtnGhost>
-          <BtnPrimary onClick={onEditar}>✏️ Editar cadastro</BtnPrimary>
+          <BtnPrimary onClick={onEditar}>
+            <span className="inline-flex items-center gap-1.5">
+              <Pencil size={16} /> Editar cadastro
+            </span>
+          </BtnPrimary>
         </>
       }
     >
@@ -182,7 +185,7 @@ function FichaCliente({ clienteId, onFechar, onEditar }: { clienteId: string; on
           {/* Fiado em aberto */}
           {c.fiadoEmAberto > 0 && (
             <div className={`rounded-xl p-3 flex items-center gap-3 ${c.contasReceber.some(emAtraso) ? 'bg-vermelho-bg' : 'bg-amarelo-bg'}`}>
-              <span className="text-2xl">{c.contasReceber.some(emAtraso) ? '⚠️' : '🧾'}</span>
+              {c.contasReceber.some(emAtraso) ? <AlertTriangle size={26} className="text-vermelho shrink-0" /> : <Receipt size={26} className="text-amarelo shrink-0" />}
               <div className="flex-1">
                 <div className="text-xs font-semibold text-grafite/60">Fiado em aberto</div>
                 <div className="text-xl font-extrabold text-petroleo">{brl(c.fiadoEmAberto)}</div>
@@ -244,14 +247,19 @@ function FichaCliente({ clienteId, onFechar, onEditar }: { clienteId: string; on
                     <span className="truncate">{o.carro?.modelo ?? '—'}</span>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${CORES_STATUS_OS[o.status] ?? 'bg-linha'}`}>{LABEL_STATUS_OS[o.status] ?? o.status}</span>
                     <span className="ml-auto font-bold tabular-nums">{brl(o.total)}</span>
-                    {o.pago && <span title="Pago" className="text-verde">💰</span>}
+                    {o.pago && <span title="Pago" className="text-verde"><CheckCircle2 size={15} /></span>}
                   </div>
                 ))}
               </div>
             )}
           </Secao>
 
-          {c.observacoes && <div className="text-sm text-grafite/60 bg-amarelo-bg/40 rounded-lg p-3">📝 {c.observacoes}</div>}
+          {c.observacoes && (
+            <div className="text-sm text-grafite/60 bg-amarelo-bg/40 rounded-lg p-3 flex gap-2">
+              <StickyNote size={16} className="shrink-0 mt-0.5 text-amarelo" />
+              <span>{c.observacoes}</span>
+            </div>
+          )}
         </>
       )}
     </Modal>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Banknote, TrendingDown, TrendingUp, Ticket, Wrench, Package, Trophy, Wallet, BarChart3, type LucideIcon } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl, LABEL_ORIGEM } from '../lib/format';
@@ -44,10 +45,12 @@ function Barra({ label, sub, valor, max, cor }: { label: string; sub: string; va
   );
 }
 
-function PainelLista({ titulo, icon, children, vazio }: { titulo: string; icon: string; children: React.ReactNode; vazio: boolean }) {
+function PainelLista({ titulo, icon: Icon, children, vazio }: { titulo: string; icon: LucideIcon; children: React.ReactNode; vazio: boolean }) {
   return (
     <Painel>
-      <div className="px-5 py-4 border-b border-linha font-bold text-petroleo">{icon} {titulo}</div>
+      <div className="px-5 py-4 border-b border-linha font-bold text-petroleo flex items-center gap-2">
+        <Icon size={18} className="text-petroleo/70" /> {titulo}
+      </div>
       <div className="py-2">
         {vazio ? <div className="text-center text-grafite/40 py-8 text-sm">Sem dados no período</div> : children}
       </div>
@@ -90,31 +93,31 @@ export default function Relatorios() {
       </PageHeader>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Kpi label="Faturamento" valor={brl(resumo?.faturamento ?? 0)} icon="💵" cor="bg-verde-bg text-verde" sub="o que entrou no caixa" />
-        <Kpi label="Despesas" valor={brl(resumo?.despesas ?? 0)} icon="📉" cor="bg-vermelho-bg text-vermelho" sub="o que saiu" />
+        <Kpi label="Faturamento" valor={brl(resumo?.faturamento ?? 0)} icon={Banknote} cor="bg-verde-bg text-verde" sub="o que entrou no caixa" />
+        <Kpi label="Despesas" valor={brl(resumo?.despesas ?? 0)} icon={TrendingDown} cor="bg-vermelho-bg text-vermelho" sub="o que saiu" />
         <Kpi
           label="Lucro real"
           valor={brl(resumo?.lucroCaixa ?? 0)}
-          icon={lucroNeg ? '▼' : '▲'}
+          icon={lucroNeg ? TrendingDown : TrendingUp}
           cor={lucroNeg ? 'bg-vermelho-bg text-vermelho' : 'bg-verde-bg text-verde'}
           sub="faturamento − despesas"
         />
         <Kpi
           label="Ticket médio"
           valor={brl(resumo?.ticketMedio ?? 0)}
-          icon="🎫"
+          icon={Ticket}
           cor="bg-azul-bg text-azul"
           sub={`${resumo?.numOrdens ?? 0} OS no período`}
         />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <PainelLista titulo="Serviços mais vendidos" icon="🔧" vazio={!rank?.servicosMaisVendidos.length}>
+        <PainelLista titulo="Serviços mais vendidos" icon={Wrench} vazio={!rank?.servicosMaisVendidos.length}>
           {rank?.servicosMaisVendidos.map((s) => (
             <Barra key={s.nome} label={s.nome} sub={`${s.quantidade}× · ${brl(s.receita)}`} valor={s.quantidade} max={maxServ} cor="bg-laranja" />
           ))}
         </PainelLista>
-        <PainelLista titulo="Peças mais usadas" icon="📦" vazio={!rank?.pecasMaisUsadas.length}>
+        <PainelLista titulo="Peças mais usadas" icon={Package} vazio={!rank?.pecasMaisUsadas.length}>
           {rank?.pecasMaisUsadas.map((p) => (
             <Barra key={p.nome} label={p.nome} sub={`${p.quantidade}× · ${brl(p.receita)}`} valor={p.quantidade} max={maxPec} cor="bg-petroleo" />
           ))}
@@ -122,19 +125,19 @@ export default function Relatorios() {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <PainelLista titulo="Clientes que mais gastam" icon="🏆" vazio={!rank?.clientesTop.length}>
+        <PainelLista titulo="Clientes que mais gastam" icon={Trophy} vazio={!rank?.clientesTop.length}>
           {rank?.clientesTop.map((c) => (
             <Barra key={c.nome} label={c.nome} sub={`${c.ordens} OS · ${brl(c.total)}`} valor={c.total} max={maxCli} cor="bg-verde" />
           ))}
         </PainelLista>
-        <PainelLista titulo="Entradas por origem" icon="💰" vazio={entradas.length === 0}>
+        <PainelLista titulo="Entradas por origem" icon={Wallet} vazio={entradas.length === 0}>
           {entradas.map(([origem, v]) => (
             <Barra key={origem} label={LABEL_ORIGEM[origem] ?? origem} sub={brl(v)} valor={v} max={maxEnt} cor="bg-verde" />
           ))}
         </PainelLista>
       </div>
 
-      <PainelLista titulo="Despesas por categoria" icon="📊" vazio={despCats.length === 0}>
+      <PainelLista titulo="Despesas por categoria" icon={BarChart3} vazio={despCats.length === 0}>
         {despCats.map(([categoria, v]) => (
           <Barra key={categoria} label={categoria} sub={brl(v)} valor={v} max={maxDesp} cor="bg-vermelho" />
         ))}

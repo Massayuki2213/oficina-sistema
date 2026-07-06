@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Zap, Printer, StickyNote } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl, dataBR, LABEL_STATUS_ORCAMENTO, CORES_STATUS_ORCAMENTO } from '../lib/format';
@@ -48,7 +49,7 @@ export default function Orcamentos() {
     setOcupado(o.id);
     try {
       const r = await api<AprovarResp>(`/orcamentos/${o.id}/aprovar`, { method: 'POST', body: {} });
-      alert(`✅ OS #${r.os.numero} gerada${r.aguardandoPeca ? ' — nasce aguardando peça (estoque insuficiente)' : ''}!`);
+      alert(`OS #${r.os.numero} gerada${r.aguardandoPeca ? ' — nasce aguardando peça (estoque insuficiente)' : ''}!`);
       carregar(busca);
     } catch (err) {
       alert(err instanceof ApiError ? err.message : 'Erro ao aprovar');
@@ -107,7 +108,7 @@ export default function Orcamentos() {
                         disabled={ocupado === o.id}
                         className="bg-verde/10 text-verde font-bold px-3 py-1.5 rounded-lg hover:bg-verde/20 disabled:opacity-50 transition whitespace-nowrap"
                       >
-                        {ocupado === o.id ? '...' : '⚡ Aprovar → OS'}
+                        {ocupado === o.id ? '...' : <span className="inline-flex items-center gap-1"><Zap size={14} /> Aprovar → OS</span>}
                       </button>
                     )}
                   </td>
@@ -410,7 +411,7 @@ function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () 
   const aprovar = () =>
     acao(async () => {
       const r = await api<AprovarResp>(`/orcamentos/${id}/aprovar`, { method: 'POST', body: { mecanicoId } });
-      alert(`✅ OS #${r.os.numero} gerada${r.aguardandoPeca ? ' — aguardando peça (estoque insuficiente)' : ''}!`);
+      alert(`OS #${r.os.numero} gerada${r.aguardandoPeca ? ' — aguardando peça (estoque insuficiente)' : ''}!`);
       onMudou();
       onFechar();
     });
@@ -430,14 +431,14 @@ function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () 
       footer={
         <>
           {orc && (
-            <button onClick={() => setImprimir(true)} className="mr-auto px-4 py-2.5 rounded-xl border-[1.6px] border-linha font-bold text-petroleo hover:bg-fundo">
-              🖨️ Imprimir
+            <button onClick={() => setImprimir(true)} className="mr-auto inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-[1.6px] border-linha font-bold text-petroleo hover:bg-fundo">
+              <Printer size={16} /> Imprimir
             </button>
           )}
           {aprovavel && orc?.status === 'RASCUNHO' && <BtnGhost onClick={() => mudarStatus('ENVIADO')}>Marcar como enviado</BtnGhost>}
           {aprovavel && <BtnGhost onClick={() => mudarStatus('RECUSADO')}>Recusar</BtnGhost>}
           {aprovavel ? (
-            <BtnPrimary onClick={aprovar} disabled={ocupado}>{ocupado ? '...' : '⚡ Aprovar → gerar OS'}</BtnPrimary>
+            <BtnPrimary onClick={aprovar} disabled={ocupado}>{ocupado ? '...' : <span className="inline-flex items-center gap-1.5"><Zap size={16} /> Aprovar → gerar OS</span>}</BtnPrimary>
           ) : (
             <BtnGhost onClick={onFechar}>Fechar</BtnGhost>
           )}
@@ -480,7 +481,12 @@ function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () 
             <span className="text-grafite/50">Total <b className="text-petroleo text-base">{brl(orc.total)}</b></span>
           </div>
 
-          {orc.observacoes && <div className="text-sm text-grafite/60 bg-amarelo-bg/40 rounded-lg p-3">📝 {orc.observacoes}</div>}
+          {orc.observacoes && (
+            <div className="text-sm text-grafite/60 bg-amarelo-bg/40 rounded-lg p-3 flex gap-2">
+              <StickyNote size={16} className="shrink-0 mt-0.5 text-amarelo" />
+              <span>{orc.observacoes}</span>
+            </div>
+          )}
 
           {aprovavel && (
             <Campo label="Atribuir mecânico (opcional)">

@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Printer } from 'lucide-react';
 import { brl, dataBR, LABEL_STATUS_OS, LABEL_FORMA_PAGAMENTO } from '../lib/format';
 
 // Identidade da oficina no cabeçalho do documento.
@@ -22,9 +23,9 @@ export function DocumentoImpressao({ onFechar, children }: { onFechar: () => voi
       <div className="nao-imprimir sticky top-0 z-10 flex items-center justify-end gap-2 px-4 py-3 bg-grafite/90 backdrop-blur">
         <button
           onClick={(e) => { e.stopPropagation(); window.print(); }}
-          className="bg-laranja hover:bg-laranja-deep text-white font-bold px-4 py-2 rounded-lg shadow"
+          className="inline-flex items-center gap-1.5 bg-laranja hover:bg-laranja-deep text-white font-bold px-4 py-2 rounded-lg shadow"
         >
-          🖨️ Imprimir / Salvar PDF
+          <Printer size={16} /> Imprimir / Salvar PDF
         </button>
         <button onClick={onFechar} className="text-white/80 hover:text-white font-bold px-4 py-2 rounded-lg border border-white/30">
           Fechar
