@@ -14,6 +14,7 @@ import Caixa from './pages/Caixa';
 import Despesas from './pages/Despesas';
 import Contas from './pages/Contas';
 import Relatorios from './pages/Relatorios';
+import Configuracoes from './pages/Configuracoes';
 import EmBreve from './pages/EmBreve';
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/despesas" element={<Despesas />} />
         <Route path="/contas-receber" element={<Contas />} />
         <Route path="/relatorios" element={<Relatorios />} />
+        <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="*" element={<EmBreve />} />
       </Routes>
     </Layout>

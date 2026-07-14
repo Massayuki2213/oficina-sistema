@@ -13,6 +13,7 @@ import {
   TrendingDown,
   Receipt,
   BarChart3,
+  Settings,
   Wrench as Logo,
   type LucideIcon,
 } from 'lucide-react';
@@ -47,6 +48,10 @@ const GRUPOS: { titulo: string; itens: Item[] }[] = [
       { to: '/contas-receber', label: 'Contas a Receber', icon: Receipt, financeiro: true },
       { to: '/relatorios', label: 'Relatórios', icon: BarChart3, financeiro: true },
     ],
+  },
+  {
+    titulo: 'Sistema',
+    itens: [{ to: '/configuracoes', label: 'Configurações', icon: Settings }],
   },
 ];
 
