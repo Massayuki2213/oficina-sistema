@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { ArrowUpRight, ArrowDownRight, Wallet } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useAvisos } from '../lib/avisos';
 import { brl, dataBR, LABEL_FORMA_PAGAMENTO } from '../lib/format';
 import { queryPeriodo, type PeriodoKey } from '../lib/periodo';
-import { PageHeader, Painel, Badge, Modal, Campo, BtnPrimary, BtnGhost, Kpi, Periodo, Restrito, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, Painel, Badge, Modal, Campo, BtnPrimary, BtnGhost, Kpi, Periodo, Restrito, InputDinheiro, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Lancamento {
   id: string;
@@ -25,6 +26,7 @@ interface Totais {
 
 export default function Caixa() {
   const { podeVerFinanceiro } = useAuth();
+  const avisos = useAvisos();
   const [periodo, setPeriodo] = useState<PeriodoKey>('mes');
   const [lancs, setLancs] = useState<Lancamento[]>([]);
   const [totais, setTotais] = useState<Totais>({ entradas: 0, saidas: 0, saldo: 0 });
@@ -95,7 +97,7 @@ export default function Caixa() {
         </table>
       </Painel>
 
-      {modal && <NovoLancamento onFechar={() => setModal(false)} onSalvo={() => { setModal(false); carregar(); }} />}
+      {modal && <NovoLancamento onFechar={() => setModal(false)} onSalvo={() => { setModal(false); avisos.sucesso('Lançamento registrado no caixa.'); carregar(); }} />}
     </div>
   );
 }
@@ -157,7 +159,7 @@ function NovoLancamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: 
       </Campo>
       <div className="grid grid-cols-2 gap-3">
         <Campo label="Valor (R$)" erro={erros.valor?.[0]}>
-          <input type="number" step="0.01" value={form.valor} onChange={(e) => set('valor', e.target.value)} className={inputCls} />
+          <InputDinheiro value={form.valor} onChange={(v) => set('valor', v)} />
         </Campo>
         <Campo label="Categoria">
           <input value={form.categoria} onChange={(e) => set('categoria', e.target.value)} placeholder="Opcional" className={inputCls} />

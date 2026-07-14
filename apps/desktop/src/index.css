@@ -16,6 +16,18 @@ body {
   @apply bg-fundo text-grafite font-sans antialiased;
 }
 
+/* Entrada dos avisos (toasts). */
+@keyframes surgir {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Impressão: esconde o app (#root) e mostra só a folha do documento (portal). */
 @media print {
   #root {

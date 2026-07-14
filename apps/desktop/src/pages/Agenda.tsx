@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, StickyNote, X } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
+import { useAvisos } from '../lib/avisos';
 import { horaBR, diaLongoBR, LABEL_TIPO_VISITA, LABEL_STATUS_VISITA, CORES_STATUS_VISITA } from '../lib/format';
 import { PageHeader, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls } from '../components/ui';
 
@@ -37,6 +38,7 @@ function rangeAgenda(key: FiltroKey): { de?: string; ate?: string } {
 }
 
 export default function Agenda() {
+  const avisos = useAvisos();
   const [filtro, setFiltro] = useState<FiltroKey>('semana');
   const [visitas, setVisitas] = useState<Visita[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -66,19 +68,27 @@ export default function Agenda() {
       await api(`/agenda/${v.id}/status`, { method: 'PATCH', body: { status } });
       await carregar();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Erro');
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao mudar o status');
     } finally {
       setOcupado(null);
     }
   }
   async function excluir(v: Visita) {
-    if (!confirm(`Cancelar o agendamento de ${v.cliente?.nome ?? 'cliente'}?`)) return;
+    const ok = await avisos.confirmar({
+      titulo: 'Cancelar agendamento',
+      mensagem: `O agendamento de ${v.cliente?.nome ?? 'cliente'} será removido da agenda.`,
+      botao: 'Cancelar agendamento',
+      perigo: true,
+    });
+    if (!ok) return;
+
     setOcupado(v.id);
     try {
       await api(`/agenda/${v.id}`, { method: 'DELETE' });
+      avisos.sucesso('Agendamento cancelado.');
       await carregar();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Erro');
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao cancelar');
     } finally {
       setOcupado(null);
     }
@@ -145,7 +155,7 @@ export default function Agenda() {
         </div>
       )}
 
-      {novo && <NovoAgendamento onFechar={() => setNovo(false)} onSalvo={() => { setNovo(false); carregar(); }} />}
+      {novo && <NovoAgendamento onFechar={() => setNovo(false)} onSalvo={() => { setNovo(false); avisos.sucesso('Visita agendada.'); carregar(); }} />}
     </div>
   );
 }

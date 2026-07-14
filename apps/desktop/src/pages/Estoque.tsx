@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { brl } from '../lib/format';
 import { useAuth } from '../lib/auth';
-import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { useAvisos } from '../lib/avisos';
+import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, InputDinheiro, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Peca {
   id: string;
@@ -21,6 +22,7 @@ interface Peca {
 
 export default function Estoque() {
   const { usuario } = useAuth();
+  const avisos = useAvisos();
   const podeGerenciar = usuario?.perfil === 'DONO';
   const [pecas, setPecas] = useState<Peca[]>([]);
   const [busca, setBusca] = useState('');
@@ -42,20 +44,32 @@ export default function Estoque() {
   }, []);
 
   async function excluir(p: Peca) {
-    if (!confirm(`Excluir a peça "${p.nome}"? Ela sai do estoque (o histórico é preservado).`)) return;
+    const ok = await avisos.confirmar({
+      titulo: 'Excluir peça',
+      mensagem: `"${p.nome}" sai do estoque. O histórico de movimentos é preservado.`,
+      botao: 'Excluir',
+      perigo: true,
+    });
+    if (!ok) return;
+
     setOcupado(p.id);
     try {
       await api(`/pecas/${p.id}`, { method: 'DELETE' });
+      avisos.sucesso(`Peça "${p.nome}" excluída.`);
       await carregar(busca);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Erro ao excluir');
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao excluir');
     } finally {
       setOcupado(null);
     }
   }
 
   const fecharForm = () => { setNovo(false); setEditar(null); };
-  const aposSalvar = () => { fecharForm(); carregar(busca); };
+  const aposSalvar = (nome: string) => {
+    avisos.sucesso(editar ? `Peça "${nome}" atualizada.` : `Peça "${nome}" cadastrada.`);
+    fecharForm();
+    carregar(busca);
+  };
   const baixos = pecas.filter((p) => p.estoqueBaixo).length;
 
   return (
@@ -115,7 +129,7 @@ export default function Estoque() {
   );
 }
 
-function FormPeca({ peca, onFechar, onSalvo }: { peca: Peca | null; onFechar: () => void; onSalvo: () => void }) {
+function FormPeca({ peca, onFechar, onSalvo }: { peca: Peca | null; onFechar: () => void; onSalvo: (nome: string) => void }) {
   const editando = !!peca;
   const [form, setForm] = useState({
     nome: peca?.nome ?? '',
@@ -142,7 +156,7 @@ function FormPeca({ peca, onFechar, onSalvo }: { peca: Peca | null; onFechar: ()
     try {
       if (editando) await api(`/pecas/${peca!.id}`, { method: 'PUT', body: form });
       else await api('/pecas', { method: 'POST', body: form });
-      onSalvo();
+      onSalvo(form.nome);
     } catch (err) {
       if (err instanceof ApiError) setErros(err.erros ?? { nome: [err.message] });
     } finally {
@@ -176,11 +190,11 @@ function FormPeca({ peca, onFechar, onSalvo }: { peca: Peca | null; onFechar: ()
         </Campo>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Campo label="Custo (R$)" erro={erros.precoCusto?.[0]}>
-          <input type="number" step="0.01" value={form.precoCusto} onChange={(e) => set('precoCusto', e.target.value)} className={inputCls} />
+        <Campo label="Custo" erro={erros.precoCusto?.[0]}>
+          <InputDinheiro value={form.precoCusto} onChange={(v) => set('precoCusto', v)} />
         </Campo>
-        <Campo label="Venda (R$)" erro={erros.precoVenda?.[0]}>
-          <input type="number" step="0.01" value={form.precoVenda} onChange={(e) => set('precoVenda', e.target.value)} className={inputCls} />
+        <Campo label="Venda" erro={erros.precoVenda?.[0]}>
+          <InputDinheiro value={form.precoVenda} onChange={(v) => set('precoVenda', v)} />
         </Campo>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Pencil, AlertTriangle, Receipt, CheckCircle2, StickyNote } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useAvisos } from '../lib/avisos';
+import { mascaraCpfCnpj, mascaraTelefone } from '../lib/mascaras';
 import { iniciais, dataBR, brl, LABEL_STATUS_OS, CORES_STATUS_OS } from '../lib/format';
 import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
@@ -17,6 +19,7 @@ interface Cliente {
 
 export default function Clientes() {
   const { usuario } = useAuth();
+  const avisos = useAvisos();
   const ehDono = usuario?.perfil === 'DONO';
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [busca, setBusca] = useState('');
@@ -39,20 +42,32 @@ export default function Clientes() {
   }, []);
 
   async function excluir(c: Cliente) {
-    if (!confirm(`Excluir o cliente "${c.nome}"? Ele sai da lista (o histórico de OS é preservado).`)) return;
+    const ok = await avisos.confirmar({
+      titulo: 'Excluir cliente',
+      mensagem: `"${c.nome}" sai da lista. O histórico de OS é preservado.`,
+      botao: 'Excluir',
+      perigo: true,
+    });
+    if (!ok) return;
+
     setOcupado(c.id);
     try {
       await api(`/clientes/${c.id}`, { method: 'DELETE' });
+      avisos.sucesso(`Cliente "${c.nome}" excluído.`);
       await carregar(busca);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Erro ao excluir');
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao excluir');
     } finally {
       setOcupado(null);
     }
   }
 
   const fecharForm = () => { setNovo(false); setEditar(null); };
-  const aposSalvar = () => { fecharForm(); carregar(busca); };
+  const aposSalvar = (nome: string) => {
+    avisos.sucesso(editar ? `Cliente "${nome}" atualizado.` : `Cliente "${nome}" cadastrado.`);
+    fecharForm();
+    carregar(busca);
+  };
 
   return (
     <div>
@@ -286,13 +301,13 @@ function Vazio({ texto }: { texto: string }) {
   return <div className="text-sm text-grafite/40 border border-dashed border-linha rounded-lg py-3 text-center">{texto}</div>;
 }
 
-function FormCliente({ cliente, onFechar, onSalvo }: { cliente: Cliente | null; onFechar: () => void; onSalvo: () => void }) {
+function FormCliente({ cliente, onFechar, onSalvo }: { cliente: Cliente | null; onFechar: () => void; onSalvo: (nome: string) => void }) {
   const editando = !!cliente;
   const [form, setForm] = useState({
     nome: cliente?.nome ?? '',
     tipo: cliente?.tipo ?? 'PF',
-    cpfCnpj: cliente?.cpfCnpj ?? '',
-    telefone: cliente?.telefone ?? '',
+    cpfCnpj: mascaraCpfCnpj(cliente?.cpfCnpj ?? ''),
+    telefone: mascaraTelefone(cliente?.telefone ?? ''),
     email: cliente?.email ?? '',
   });
   const [erros, setErros] = useState<Record<string, string[]>>({});
@@ -305,7 +320,7 @@ function FormCliente({ cliente, onFechar, onSalvo }: { cliente: Cliente | null; 
     try {
       if (editando) await api(`/clientes/${cliente!.id}`, { method: 'PUT', body: form });
       else await api('/clientes', { method: 'POST', body: form });
-      onSalvo();
+      onSalvo(form.nome);
     } catch (err) {
       if (err instanceof ApiError) setErros(err.erros ?? { nome: [err.message] });
     } finally {
@@ -337,12 +352,24 @@ function FormCliente({ cliente, onFechar, onSalvo }: { cliente: Cliente | null; 
           </select>
         </Campo>
         <Campo label="CPF / CNPJ" erro={erros.cpfCnpj?.[0]}>
-          <input value={form.cpfCnpj} onChange={(e) => set('cpfCnpj', e.target.value)} className={inputCls} />
+          <input
+            value={form.cpfCnpj}
+            onChange={(e) => set('cpfCnpj', mascaraCpfCnpj(e.target.value))}
+            inputMode="numeric"
+            placeholder={form.tipo === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
+            className={inputCls}
+          />
         </Campo>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Campo label="Telefone" erro={erros.telefone?.[0]}>
-          <input value={form.telefone} onChange={(e) => set('telefone', e.target.value)} className={inputCls} />
+          <input
+            value={form.telefone}
+            onChange={(e) => set('telefone', mascaraTelefone(e.target.value))}
+            inputMode="numeric"
+            placeholder="(11) 98877-1234"
+            className={inputCls}
+          />
         </Campo>
         <Campo label="E-mail" erro={erros.email?.[0]}>
           <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} className={inputCls} />

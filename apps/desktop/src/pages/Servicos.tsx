@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useAvisos } from '../lib/avisos';
 import { brl } from '../lib/format';
-import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, InputDinheiro, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Servico {
   id: string;
@@ -14,6 +15,7 @@ interface Servico {
 
 export default function Servicos() {
   const { usuario } = useAuth();
+  const avisos = useAvisos();
   const ehDono = usuario?.perfil === 'DONO';
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [busca, setBusca] = useState('');
@@ -35,20 +37,32 @@ export default function Servicos() {
   }, []);
 
   async function excluir(s: Servico) {
-    if (!confirm(`Excluir o serviço "${s.nome}"? Ele sai do catálogo (OS antigas são preservadas).`)) return;
+    const ok = await avisos.confirmar({
+      titulo: 'Excluir serviço',
+      mensagem: `"${s.nome}" sai do catálogo. As OS antigas são preservadas.`,
+      botao: 'Excluir',
+      perigo: true,
+    });
+    if (!ok) return;
+
     setOcupado(s.id);
     try {
       await api(`/servicos/${s.id}`, { method: 'DELETE' });
+      avisos.sucesso(`Serviço "${s.nome}" excluído.`);
       await carregar(busca);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Erro ao excluir');
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao excluir');
     } finally {
       setOcupado(null);
     }
   }
 
   const fecharForm = () => { setNovo(false); setEditar(null); };
-  const aposSalvar = () => { fecharForm(); carregar(busca); };
+  const aposSalvar = (nome: string) => {
+    avisos.sucesso(editar ? `Serviço "${nome}" atualizado.` : `Serviço "${nome}" cadastrado.`);
+    fecharForm();
+    carregar(busca);
+  };
 
   return (
     <div>
@@ -91,7 +105,7 @@ export default function Servicos() {
   );
 }
 
-function FormServico({ servico, onFechar, onSalvo }: { servico: Servico | null; onFechar: () => void; onSalvo: () => void }) {
+function FormServico({ servico, onFechar, onSalvo }: { servico: Servico | null; onFechar: () => void; onSalvo: (nome: string) => void }) {
   const editando = !!servico;
   const [form, setForm] = useState({
     nome: servico?.nome ?? '',
@@ -109,7 +123,7 @@ function FormServico({ servico, onFechar, onSalvo }: { servico: Servico | null; 
     try {
       if (editando) await api(`/servicos/${servico!.id}`, { method: 'PUT', body: form });
       else await api('/servicos', { method: 'POST', body: form });
-      onSalvo();
+      onSalvo(form.nome);
     } catch (err) {
       if (err instanceof ApiError) setErros(err.erros ?? { nome: [err.message] });
     } finally {
@@ -137,8 +151,8 @@ function FormServico({ servico, onFechar, onSalvo }: { servico: Servico | null; 
         <input value={form.categoria} onChange={(e) => set('categoria', e.target.value)} placeholder="Motor, Freios, Elétrica..." className={inputCls} />
       </Campo>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Campo label="Mão de obra (R$)" erro={erros.precoMaoDeObra?.[0]}>
-          <input type="number" step="0.01" value={form.precoMaoDeObra} onChange={(e) => set('precoMaoDeObra', e.target.value)} className={inputCls} />
+        <Campo label="Mão de obra" erro={erros.precoMaoDeObra?.[0]}>
+          <InputDinheiro value={form.precoMaoDeObra} onChange={(v) => set('precoMaoDeObra', v)} />
         </Campo>
         <Campo label="Tempo (min)">
           <input type="number" value={form.tempoEstimadoMin} onChange={(e) => set('tempoEstimadoMin', e.target.value)} className={inputCls} />

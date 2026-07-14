@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useAvisos } from '../lib/avisos';
+import { mascaraPlaca } from '../lib/mascaras';
 import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Modal, Campo, AcaoEditar, AcaoExcluir, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Carro {
@@ -22,6 +24,7 @@ interface ClienteOpt {
 
 export default function Carros() {
   const { usuario } = useAuth();
+  const avisos = useAvisos();
   const ehDono = usuario?.perfil === 'DONO';
   const [carros, setCarros] = useState<Carro[]>([]);
   const [busca, setBusca] = useState('');
@@ -43,20 +46,32 @@ export default function Carros() {
   }, []);
 
   async function excluir(c: Carro) {
-    if (!confirm(`Excluir o veículo ${c.placa} (${c.marca} ${c.modelo})? Ele sai da lista (as OS antigas são preservadas).`)) return;
+    const ok = await avisos.confirmar({
+      titulo: 'Excluir veículo',
+      mensagem: `${c.placa} (${c.marca} ${c.modelo}) sai da lista. As OS antigas são preservadas.`,
+      botao: 'Excluir',
+      perigo: true,
+    });
+    if (!ok) return;
+
     setOcupado(c.id);
     try {
       await api(`/carros/${c.id}`, { method: 'DELETE' });
+      avisos.sucesso(`Veículo ${c.placa} excluído.`);
       await carregar(busca);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Erro ao excluir');
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao excluir');
     } finally {
       setOcupado(null);
     }
   }
 
   const fecharForm = () => { setNovo(false); setEditar(null); };
-  const aposSalvar = () => { fecharForm(); carregar(busca); };
+  const aposSalvar = (placa: string) => {
+    avisos.sucesso(editar ? `Veículo ${placa} atualizado.` : `Veículo ${placa} cadastrado.`);
+    fecharForm();
+    carregar(busca);
+  };
 
   return (
     <div>
@@ -109,12 +124,12 @@ export default function Carros() {
   );
 }
 
-function FormCarro({ carro, onFechar, onSalvo }: { carro: Carro | null; onFechar: () => void; onSalvo: () => void }) {
+function FormCarro({ carro, onFechar, onSalvo }: { carro: Carro | null; onFechar: () => void; onSalvo: (placa: string) => void }) {
   const editando = !!carro;
   const [clientes, setClientes] = useState<ClienteOpt[]>([]);
   const [form, setForm] = useState({
     clienteId: carro?.clienteId ?? '',
-    placa: carro?.placa ?? '',
+    placa: mascaraPlaca(carro?.placa ?? ''),
     marca: carro?.marca ?? '',
     modelo: carro?.modelo ?? '',
     ano: carro?.ano != null ? String(carro.ano) : '',
@@ -136,7 +151,7 @@ function FormCarro({ carro, onFechar, onSalvo }: { carro: Carro | null; onFechar
     try {
       if (editando) await api(`/carros/${carro!.id}`, { method: 'PUT', body: form });
       else await api('/carros', { method: 'POST', body: form });
-      onSalvo();
+      onSalvo(form.placa);
     } catch (err) {
       if (err instanceof ApiError) setErros(err.erros ?? { placa: [err.message] });
     } finally {
@@ -169,7 +184,12 @@ function FormCarro({ carro, onFechar, onSalvo }: { carro: Carro | null; onFechar
       </Campo>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Campo label="Placa" erro={erros.placa?.[0]}>
-          <input value={form.placa} onChange={(e) => set('placa', e.target.value)} placeholder="ABC-1234" className={inputCls} />
+          <input
+            value={form.placa}
+            onChange={(e) => set('placa', mascaraPlaca(e.target.value))}
+            placeholder="ABC-1234"
+            className={`${inputCls} font-mono uppercase tracking-wider`}
+          />
         </Campo>
         <Campo label="Ano" erro={erros.ano?.[0]}>
           <input type="number" value={form.ano} onChange={(e) => set('ano', e.target.value)} className={inputCls} />

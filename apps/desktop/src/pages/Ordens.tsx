@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Play, Check, Printer, Banknote, CheckCircle2 } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useAvisos } from '../lib/avisos';
 import { brl, dataBR, LABEL_STATUS_OS, CORES_STATUS_OS } from '../lib/format';
 import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 import { DocumentoImpressao, OSDoc } from '../components/Impressao';
@@ -165,6 +166,7 @@ function DetalheOrdem({
   onReceber: (os: { id: string; numero: number; total: number }) => void;
 }) {
   const { usuario } = useAuth();
+  const avisos = useAvisos();
   const podeReceber = usuario?.perfil !== 'MECANICO';
   const [os, setOs] = useState<OSFull | null>(null);
   const [mecanicos, setMecanicos] = useState<MecanicoOpt[]>([]);
@@ -194,6 +196,15 @@ function DetalheOrdem({
     }
   }
   const mudarStatus = (status: string) => acao(() => api(`/ordens/${id}/status`, { method: 'PATCH', body: { status } }).then(recarregar));
+  async function cancelarOS() {
+    const ok = await avisos.confirmar({
+      titulo: 'Cancelar esta OS',
+      mensagem: 'A ordem passa para "cancelada". As peças já baixadas não voltam ao estoque automaticamente.',
+      botao: 'Cancelar OS',
+      perigo: true,
+    });
+    if (ok) await mudarStatus('CANCELADA');
+  }
   const atribuir = (mecanicoId: string) => {
     if (!mecanicoId) return;
     acao(() => api(`/ordens/${id}/mecanico`, { method: 'PATCH', body: { mecanicoId } }).then(recarregar));
@@ -215,7 +226,7 @@ function DetalheOrdem({
               <Printer size={16} /> Imprimir
             </button>
           )}
-          {os && CANCELAVEIS.includes(os.status) && <BtnGhost onClick={() => confirm('Cancelar esta OS?') && mudarStatus('CANCELADA')}>Cancelar OS</BtnGhost>}
+          {os && CANCELAVEIS.includes(os.status) && <BtnGhost onClick={() => void cancelarOS()}>Cancelar OS</BtnGhost>}
           {os && ACOES[os.status]?.map((a) => (
             <BtnGhost key={a.status} onClick={() => mudarStatus(a.status)}>{a.label}</BtnGhost>
           ))}
@@ -303,6 +314,7 @@ function ReceberPagamento({
   onFechar: () => void;
   onRecebido: () => void;
 }) {
+  const avisos = useAvisos();
   const [forma, setForma] = useState('A_VISTA');
   const [parcelas, setParcelas] = useState('2');
   const [primeiroVenc, setPrimeiroVenc] = useState('30');
@@ -318,7 +330,8 @@ function ReceberPagamento({
         method: 'POST',
         body: { formaPagamento: forma, parcelas: Number(parcelas) || 1, primeiroVencimentoDias: Number(primeiroVenc) || 30 },
       });
-      alert(r.aVista ? `Recebido! Entrou ${brl(os.total)} no caixa.` : `OS entregue — ${r.parcelas} parcela(s) geradas em Contas a Receber.`);
+      if (r.aVista) avisos.sucesso(`Recebido! Entrou ${brl(os.total)} no caixa.`);
+      else avisos.sucesso(`OS entregue — ${r.parcelas} parcela(s) geradas em Contas a Receber.`);
       onRecebido();
     } catch (err) {
       setErro(err instanceof ApiError ? err.message : 'Erro ao receber');

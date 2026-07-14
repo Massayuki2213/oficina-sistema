@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { TrendingDown, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useAvisos } from '../lib/avisos';
 import { brl, dataBR } from '../lib/format';
 import { queryPeriodo, type PeriodoKey } from '../lib/periodo';
-import { PageHeader, Painel, Badge, Modal, Campo, BtnPrimary, BtnGhost, Kpi, Periodo, Restrito, AcaoExcluir, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, Painel, Badge, Modal, Campo, BtnPrimary, BtnGhost, Kpi, Periodo, Restrito, AcaoExcluir, InputDinheiro, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface Despesa {
   id: string;
@@ -24,6 +25,7 @@ interface Totais {
 
 export default function Despesas() {
   const { podeVerFinanceiro } = useAuth();
+  const avisos = useAvisos();
   const [periodo, setPeriodo] = useState<PeriodoKey>('mes');
   const [despesas, setDespesas] = useState<Despesa[]>([]);
   const [totais, setTotais] = useState<Totais>({ total: 0, pago: 0, aPagar: 0 });
@@ -48,26 +50,41 @@ export default function Despesas() {
   }, [periodo, podeVerFinanceiro]);
 
   async function pagar(d: Despesa) {
-    if (!confirm(`Confirmar pagamento de "${d.descricao}" (${brl(d.valor)})? Isso lança a saída no caixa.`)) return;
+    const ok = await avisos.confirmar({
+      titulo: 'Confirmar pagamento',
+      mensagem: `Pagar "${d.descricao}" (${brl(d.valor)})? A saída é lançada no caixa.`,
+      botao: 'Pagar',
+    });
+    if (!ok) return;
+
     setOcupado(d.id);
     try {
       await api(`/despesas/${d.id}/pagar`, { method: 'PATCH' });
+      avisos.sucesso(`Despesa paga — ${brl(d.valor)} saiu do caixa.`);
       await carregar();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Erro ao pagar');
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao pagar');
     } finally {
       setOcupado(null);
     }
   }
 
   async function excluir(d: Despesa) {
-    if (!confirm(`Excluir a despesa "${d.descricao}"?`)) return;
+    const ok = await avisos.confirmar({
+      titulo: 'Excluir despesa',
+      mensagem: `"${d.descricao}" (${brl(d.valor)}) será removida.`,
+      botao: 'Excluir',
+      perigo: true,
+    });
+    if (!ok) return;
+
     setOcupado(d.id);
     try {
       await api(`/despesas/${d.id}`, { method: 'DELETE' });
+      avisos.sucesso('Despesa excluída.');
       await carregar();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Erro ao excluir');
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao excluir');
     } finally {
       setOcupado(null);
     }
@@ -137,7 +154,7 @@ export default function Despesas() {
         </table>
       </Painel>
 
-      {modal && <NovaDespesa onFechar={() => setModal(false)} onSalvo={() => { setModal(false); carregar(); }} />}
+      {modal && <NovaDespesa onFechar={() => setModal(false)} onSalvo={() => { setModal(false); avisos.sucesso('Despesa registrada.'); carregar(); }} />}
     </div>
   );
 }
@@ -182,7 +199,7 @@ function NovaDespesa({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () 
           <input value={form.categoria} onChange={(e) => set('categoria', e.target.value)} placeholder="Aluguel, energia..." className={inputCls} />
         </Campo>
         <Campo label="Valor (R$)" erro={erros.valor?.[0]}>
-          <input type="number" step="0.01" value={form.valor} onChange={(e) => set('valor', e.target.value)} className={inputCls} />
+          <InputDinheiro value={form.valor} onChange={(v) => set('valor', v)} />
         </Campo>
       </div>
       <Campo label="Vencimento" erro={erros.data?.[0]}>

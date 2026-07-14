@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import { Search, Lock, X, Pencil, Trash2, type LucideIcon } from 'lucide-react';
 import { PERIODOS, type PeriodoKey } from '../lib/periodo';
+import { centavosParaTexto, soDigitos, textoParaCentavos, valorParaCentavos } from '../lib/mascaras';
 
 // Peças de UI reutilizadas pelas telas (mesma linguagem visual do Hermes).
 
@@ -106,6 +107,30 @@ export function Modal({ title, onClose, children, footer, size = 'md' }: { title
         <div className="p-6 space-y-3.5">{children}</div>
         <div className="flex justify-end gap-2.5 px-6 py-4 border-t border-linha">{footer}</div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Campo de dinheiro: o usuário digita só os números e vê "1.234,56";
+ * o formulário continua guardando "1234.56", que é o que a API espera.
+ */
+export function InputDinheiro({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const texto = value === '' ? '' : centavosParaTexto(valorParaCentavos(value));
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-grafite/40 pointer-events-none">R$</span>
+      <input
+        inputMode="numeric"
+        value={texto}
+        placeholder="0,00"
+        onChange={(e) => {
+          const digitado = e.target.value;
+          if (!soDigitos(digitado)) return onChange('');
+          onChange((textoParaCentavos(digitado) / 100).toFixed(2));
+        }}
+        className={`${inputCls} pl-10 text-right tabular-nums`}
+      />
     </div>
   );
 }
