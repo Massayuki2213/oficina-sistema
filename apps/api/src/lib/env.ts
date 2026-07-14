@@ -9,6 +9,17 @@ const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET precisa ter ao menos 16 caracteres'),
   JWT_EXPIRES_IN: z.string().default('8h'),
+
+  // ---- Backup automático do banco ----
+  BACKUP_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  BACKUP_DIR: z.string().default('./backups'),
+  BACKUP_RETENCAO_DIAS: z.coerce.number().int().positive().default(14),
+  // Container do docker-compose. Usado quando o banco é local: garante que o
+  // pg_dump tem a mesma versão do servidor, sem depender do Postgres instalado.
+  BACKUP_CONTAINER: z.string().default('hermes-postgres'),
 });
 
 const parsed = schema.safeParse(process.env);

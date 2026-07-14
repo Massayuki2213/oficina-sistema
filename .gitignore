@@ -18,6 +18,10 @@ out/
 # Prisma
 apps/api/prisma/*.db
 
+# Backups do banco (cópias locais — nunca vão para o repositório)
+backups/
+*.sql.bak
+
 # Logs
 logs/
 *.log
