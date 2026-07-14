@@ -72,7 +72,11 @@ export async function getOrcamento(id: string) {
   return orc ? toDTO(orc) : null;
 }
 
-export async function createOrcamento(data: CreateOrcamentoInput) {
+/**
+ * Valida o veículo, "congela" os preços do catálogo nos itens e fecha as contas
+ * (RN-09: total = mão de obra + peças − desconto). Serve para criar e para editar.
+ */
+async function montarOrcamento(data: CreateOrcamentoInput) {
   // O veículo precisa existir e pertencer ao cliente informado.
   const carro = await prisma.carro.findUnique({ where: { id: data.carroId } });
   if (!carro) throw new AppError(400, 'Veículo não encontrado');
@@ -102,28 +106,67 @@ export async function createOrcamento(data: CreateOrcamentoInput) {
     return { pecaId: p.pecaId, quantidade: p.quantidade, precoUnit };
   });
 
-  // RN-09: total = mão de obra + peças − desconto.
   const desconto = Math.min(data.desconto, subtotal);
-  const total = subtotal - desconto;
-  const validade = new Date(Date.now() + data.validadeDias * 24 * 60 * 60 * 1000);
+  return {
+    clienteId: data.clienteId,
+    carroId: data.carroId,
+    validade: new Date(Date.now() + data.validadeDias * 24 * 60 * 60 * 1000),
+    subtotal,
+    desconto,
+    total: subtotal - desconto,
+    observacoes: data.observacoes,
+    servicosCreate,
+    pecasCreate,
+  };
+}
+
+export async function createOrcamento(data: CreateOrcamentoInput) {
+  const { servicosCreate, pecasCreate, ...campos } = await montarOrcamento(data);
 
   const orcamento = await prisma.orcamento.create({
-    data: {
-      clienteId: data.clienteId,
-      carroId: data.carroId,
-      validade,
-      subtotal,
-      desconto,
-      total,
-      observacoes: data.observacoes,
-      servicos: { create: servicosCreate },
-      pecas: { create: pecasCreate },
-    },
+    data: { ...campos, servicos: { create: servicosCreate }, pecas: { create: pecasCreate } },
     include: fullInclude,
   });
 
   await invalidarCache();
   return toDTO(orcamento);
+}
+
+/**
+ * Edita um orçamento que ainda não virou OS (Fase 5 — corrigir sem refazer).
+ * Aprovado é intocável: já gerou Ordem de Serviço e baixou estoque.
+ */
+export async function updateOrcamento(id: string, data: CreateOrcamentoInput) {
+  const atual = await prisma.orcamento.findUnique({ where: { id }, include: { ordem: true } });
+  if (!atual) throw new AppError(404, 'Orçamento não encontrado');
+  if (atual.ordem) throw new AppError(409, 'Este orçamento já virou uma Ordem de Serviço e não pode ser alterado');
+  if (atual.status === 'APROVADO') throw new AppError(409, 'Orçamento aprovado não pode ser alterado');
+
+  const { servicosCreate, pecasCreate, ...campos } = await montarOrcamento(data);
+
+  // Troca os itens por inteiro: é o que a tela manda, e evita casar item a item.
+  const atualizado = await prisma.$transaction(async (tx) => {
+    await tx.orcamentoServico.deleteMany({ where: { orcamentoId: id } });
+    await tx.orcamentoPeca.deleteMany({ where: { orcamentoId: id } });
+    return tx.orcamento.update({
+      where: { id },
+      data: { ...campos, servicos: { create: servicosCreate }, pecas: { create: pecasCreate } },
+      include: fullInclude,
+    });
+  });
+
+  await invalidarCache();
+  return toDTO(atualizado);
+}
+
+/** Apaga um orçamento que não virou OS. Os itens saem junto (cascade). */
+export async function deleteOrcamento(id: string) {
+  const atual = await prisma.orcamento.findUnique({ where: { id }, include: { ordem: true } });
+  if (!atual) throw new AppError(404, 'Orçamento não encontrado');
+  if (atual.ordem) throw new AppError(409, 'Este orçamento já virou uma Ordem de Serviço e não pode ser excluído');
+
+  await prisma.orcamento.delete({ where: { id } });
+  await invalidarCache();
 }
 
 export async function alterarStatus(id: string, status: StatusOrcamentoInput['status']) {

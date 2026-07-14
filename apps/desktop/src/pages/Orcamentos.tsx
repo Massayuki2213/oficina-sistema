@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Zap, Printer, StickyNote } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useAvisos } from '../lib/avisos';
 import { brl, dataBR, LABEL_STATUS_ORCAMENTO, CORES_STATUS_ORCAMENTO } from '../lib/format';
-import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, InputDinheiro, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 import { DocumentoImpressao, OrcamentoDoc } from '../components/Impressao';
 
 interface OrcItem {
@@ -25,10 +26,14 @@ interface AprovarResp {
 const FINALIZADOS = ['APROVADO', 'RECUSADO', 'EXPIRADO'];
 
 export default function Orcamentos() {
+  const { usuario } = useAuth();
+  const avisos = useAvisos();
+  const ehDono = usuario?.perfil === 'DONO';
   const [orcamentos, setOrcamentos] = useState<OrcItem[]>([]);
   const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [novo, setNovo] = useState(false);
+  const [editar, setEditar] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
 
@@ -45,14 +50,42 @@ export default function Orcamentos() {
   }, []);
 
   async function aprovarRapido(o: OrcItem) {
-    if (!confirm(`Aprovar o orçamento #${o.numero} e gerar a Ordem de Serviço? Isso baixa o estoque das peças.`)) return;
+    const ok = await avisos.confirmar({
+      titulo: `Aprovar orçamento #${o.numero}`,
+      mensagem: 'A Ordem de Serviço é gerada na hora e o estoque das peças é baixado.',
+      botao: 'Aprovar e gerar OS',
+    });
+    if (!ok) return;
+
     setOcupado(o.id);
     try {
       const r = await api<AprovarResp>(`/orcamentos/${o.id}/aprovar`, { method: 'POST', body: {} });
-      alert(`OS #${r.os.numero} gerada${r.aguardandoPeca ? ' — nasce aguardando peça (estoque insuficiente)' : ''}!`);
+      if (r.aguardandoPeca) avisos.info(`OS #${r.os.numero} gerada — nasce aguardando peça (estoque insuficiente).`);
+      else avisos.sucesso(`OS #${r.os.numero} gerada!`);
       carregar(busca);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Erro ao aprovar');
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao aprovar');
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  async function excluir(o: OrcItem) {
+    const ok = await avisos.confirmar({
+      titulo: `Excluir orçamento #${o.numero}`,
+      mensagem: `O orçamento de ${o.cliente?.nome ?? 'cliente'} (${brl(o.total)}) será apagado.`,
+      botao: 'Excluir',
+      perigo: true,
+    });
+    if (!ok) return;
+
+    setOcupado(o.id);
+    try {
+      await api(`/orcamentos/${o.id}`, { method: 'DELETE' });
+      avisos.sucesso(`Orçamento #${o.numero} excluído.`);
+      await carregar(busca);
+    } catch (err) {
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao excluir');
     } finally {
       setOcupado(null);
     }
@@ -101,7 +134,7 @@ export default function Orcamentos() {
                   <td className={tdCls}>
                     <Badge cor={CORES_STATUS_ORCAMENTO[o.status]}>{LABEL_STATUS_ORCAMENTO[o.status] ?? o.status}</Badge>
                   </td>
-                  <td className={`${tdCls} text-right`} onClick={(e) => e.stopPropagation()}>
+                  <td className={`${tdCls} text-right whitespace-nowrap`} onClick={(e) => e.stopPropagation()}>
                     {aprovavel && (
                       <button
                         onClick={() => aprovarRapido(o)}
@@ -111,6 +144,13 @@ export default function Orcamentos() {
                         {ocupado === o.id ? '...' : <span className="inline-flex items-center gap-1"><Zap size={14} /> Aprovar → OS</span>}
                       </button>
                     )}
+                    {/* Aprovado já virou OS e baixou estoque: não se mexe mais. */}
+                    {o.status !== 'APROVADO' && (
+                      <>
+                        <AcaoEditar onClick={() => setEditar(o.id)} />
+                        {ehDono && <AcaoExcluir onClick={() => excluir(o)} disabled={ocupado === o.id} />}
+                      </>
+                    )}
                   </td>
                 </tr>
               );
@@ -119,7 +159,18 @@ export default function Orcamentos() {
         </table>
       </Painel>
 
-      {novo && <NovoOrcamento onFechar={() => setNovo(false)} onSalvo={() => { setNovo(false); carregar(); }} />}
+      {(novo || editar) && (
+        <FormOrcamento
+          orcamentoId={editar ?? undefined}
+          onFechar={() => { setNovo(false); setEditar(null); }}
+          onSalvo={(editou) => {
+            setNovo(false);
+            setEditar(null);
+            avisos.sucesso(editou ? 'Orçamento atualizado.' : 'Orçamento criado.');
+            carregar(busca);
+          }}
+        />
+      )}
       {detalhe && (
         <DetalheOrcamento
           id={detalhe}
@@ -141,9 +192,10 @@ interface PecaOpt { id: string; nome: string; precoVenda: number; estoqueAtual: 
 type LinhaServ = { id: string; nome: string; preco: number; quantidade: number };
 type LinhaPec = { id: string; nome: string; preco: number; quantidade: number; estoque: number; unidade: string };
 
-function NovoOrcamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
+function FormOrcamento({ orcamentoId, onFechar, onSalvo }: { orcamentoId?: string; onFechar: () => void; onSalvo: (editou: boolean) => void }) {
   const { usuario } = useAuth();
   const podeDesconto = usuario?.perfil !== 'MECANICO';
+  const editando = !!orcamentoId;
 
   const [clientes, setClientes] = useState<ClienteOpt[]>([]);
   const [carros, setCarros] = useState<CarroOpt[]>([]);
@@ -160,12 +212,46 @@ function NovoOrcamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: (
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
 
+  // Catálogos primeiro; se for edição, o orçamento vem depois deles — as linhas
+  // de peça precisam do catálogo para saber estoque e unidade.
   useEffect(() => {
-    api<ClienteOpt[]>('/clientes').then(setClientes).catch(() => {});
-    api<CarroOpt[]>('/carros').then(setCarros).catch(() => {});
-    api<ServicoOpt[]>('/servicos').then(setCatServ).catch(() => {});
-    api<PecaOpt[]>('/pecas').then(setCatPec).catch(() => {});
-  }, []);
+    (async () => {
+      const [cli, car, serv, pec] = await Promise.all([
+        api<ClienteOpt[]>('/clientes'),
+        api<CarroOpt[]>('/carros'),
+        api<ServicoOpt[]>('/servicos'),
+        api<PecaOpt[]>('/pecas'),
+      ]);
+      setClientes(cli);
+      setCarros(car);
+      setCatServ(serv);
+      setCatPec(pec);
+
+      if (!orcamentoId) return;
+      const o = await api<OrcFull>(`/orcamentos/${orcamentoId}`);
+      setClienteId(o.clienteId);
+      setCarroId(o.carroId);
+      setServs(o.servicos.map((s) => ({ id: s.servicoId, nome: s.servico?.nome ?? '—', preco: s.precoUnit, quantidade: s.quantidade })));
+      setPecs(
+        o.pecas.map((p) => {
+          const cat = pec.find((x) => x.id === p.pecaId);
+          return {
+            id: p.pecaId,
+            nome: p.peca?.nome ?? '—',
+            preco: p.precoUnit,
+            quantidade: p.quantidade,
+            estoque: cat?.estoqueAtual ?? 0,
+            unidade: cat?.unidade ?? 'un',
+          };
+        }),
+      );
+      setDesconto(o.desconto ? String(o.desconto) : '');
+      setObservacoes(o.observacoes ?? '');
+      // A validade é uma data; o formulário trabalha em dias. Mantém o que falta.
+      const diasRestantes = Math.ceil((new Date(o.validade).getTime() - Date.now()) / 86_400_000);
+      setValidadeDias(String(Math.max(1, diasRestantes)));
+    })().catch(() => setErro('Não foi possível carregar o orçamento'));
+  }, [orcamentoId]);
 
   const carrosDoCliente = useMemo(() => carros.filter((c) => c.clienteId === clienteId), [carros, clienteId]);
 
@@ -194,19 +280,18 @@ function NovoOrcamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: (
     if (semItens) return setErro('Adicione ao menos 1 serviço ou peça.');
     setSalvando(true);
     try {
-      await api('/orcamentos', {
-        method: 'POST',
-        body: {
-          clienteId,
-          carroId,
-          validadeDias: Number(validadeDias) || 15,
-          desconto: descNum,
-          observacoes,
-          servicos: servs.map((s) => ({ servicoId: s.id, quantidade: s.quantidade })),
-          pecas: pecs.map((p) => ({ pecaId: p.id, quantidade: p.quantidade })),
-        },
-      });
-      onSalvo();
+      const corpo = {
+        clienteId,
+        carroId,
+        validadeDias: Number(validadeDias) || 15,
+        desconto: descNum,
+        observacoes,
+        servicos: servs.map((s) => ({ servicoId: s.id, quantidade: s.quantidade })),
+        pecas: pecs.map((p) => ({ pecaId: p.id, quantidade: p.quantidade })),
+      };
+      if (editando) await api(`/orcamentos/${orcamentoId}`, { method: 'PUT', body: corpo });
+      else await api('/orcamentos', { method: 'POST', body: corpo });
+      onSalvo(editando);
     } catch (err) {
       setErro(err instanceof ApiError ? err.message : 'Erro ao salvar');
     } finally {
@@ -216,7 +301,7 @@ function NovoOrcamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: (
 
   return (
     <Modal
-      title="Novo orçamento"
+      title={editando ? 'Editar orçamento' : 'Novo orçamento'}
       size="lg"
       onClose={onFechar}
       footer={
@@ -229,7 +314,7 @@ function NovoOrcamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: (
           </div>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>
           <BtnPrimary onClick={salvar} disabled={salvando}>
-            {salvando ? 'Salvando...' : 'Salvar orçamento'}
+            {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Salvar orçamento'}
           </BtnPrimary>
         </>
       }
@@ -315,8 +400,8 @@ function NovoOrcamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: (
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {podeDesconto && (
-          <Campo label="Desconto (R$)">
-            <input type="number" step="0.01" value={desconto} onChange={(e) => setDesconto(e.target.value)} className={inputCls} />
+          <Campo label="Desconto">
+            <InputDinheiro value={desconto} onChange={setDesconto} />
           </Campo>
         )}
         <Campo label="Validade (dias)">
@@ -374,14 +459,17 @@ function ListaItens({ linhas, vazio, textoVazio }: { linhas: LinhaUI[]; vazio: b
 interface OrcFull extends OrcItem {
   observacoes: string | null;
   validade: string;
+  clienteId: string;
+  carroId: string;
   cliente?: { nome: string; telefone?: string | null; cpfCnpj?: string | null };
   carro?: { placa: string; modelo: string; marca?: string; ano?: number | null; kmAtual?: number | null };
-  servicos: { id: string; quantidade: number; precoUnit: number; servico?: { nome: string } }[];
-  pecas: { id: string; quantidade: number; precoUnit: number; peca?: { nome: string } }[];
+  servicos: { id: string; servicoId: string; quantidade: number; precoUnit: number; servico?: { nome: string } }[];
+  pecas: { id: string; pecaId: string; quantidade: number; precoUnit: number; peca?: { nome: string } }[];
 }
 interface MecanicoOpt { id: string; nome: string }
 
 function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () => void; onMudou: () => void }) {
+  const avisos = useAvisos();
   const [orc, setOrc] = useState<OrcFull | null>(null);
   const [mecanicos, setMecanicos] = useState<MecanicoOpt[]>([]);
   const [mecanicoId, setMecanicoId] = useState('');
@@ -411,7 +499,8 @@ function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () 
   const aprovar = () =>
     acao(async () => {
       const r = await api<AprovarResp>(`/orcamentos/${id}/aprovar`, { method: 'POST', body: { mecanicoId } });
-      alert(`OS #${r.os.numero} gerada${r.aguardandoPeca ? ' — aguardando peça (estoque insuficiente)' : ''}!`);
+      if (r.aguardandoPeca) avisos.info(`OS #${r.os.numero} gerada — aguardando peça (estoque insuficiente).`);
+      else avisos.sucesso(`OS #${r.os.numero} gerada!`);
       onMudou();
       onFechar();
     });
