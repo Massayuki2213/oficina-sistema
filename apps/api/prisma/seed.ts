@@ -54,8 +54,9 @@ async function main() {
   // ---- Limpeza dos dados de domínio (reinicia a numeração de orçamentos/OS) ----
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE
     "logs_auditoria","movimentos_estoque","contas_receber","despesas","lancamentos_caixa",
-    "visitas","os_pecas","os_servicos","ordens_servico","orcamento_pecas","orcamento_servicos",
-    "orcamentos","carros","pecas","servicos","fornecedores","clientes"
+    "compra_itens","compras","visitas","os_pecas","os_servicos","ordens_servico",
+    "orcamento_pecas","orcamento_servicos","orcamentos","carros","pecas","servicos",
+    "fornecedores","clientes"
     RESTART IDENTITY CASCADE;`);
   console.log('🧹 dados antigos removidos');
 
@@ -243,9 +244,43 @@ async function main() {
   }
   await despesaPaga('Aluguel', 'Aluguel do galpão', 1200, 2, true);
   await despesaPaga('Energia', 'Conta de energia elétrica', 380, 1);
-  // Despesa pendente (aparece em "a pagar", ainda não toca o caixa)
-  await prisma.despesa.create({ data: { categoria: 'Peças', descricao: 'Compra de peças (Auto Sul)', valor: 900, recorrente: false, pago: false, fornecedorId: fornSul.id, data: noMes(0) } });
-  console.log('💰 caixa: aporte + entradas de OS + despesas (2 pagas, 1 pendente)');
+  console.log('💰 caixa: aporte + entradas de OS + despesas (2 pagas)');
+
+  // ---- Compras de distribuidores (contas a pagar) ----
+  // Registros históricos: o estoque acima já reflete o saldo atual, então aqui
+  // só criamos a compra e seus itens (sem reaplicar entrada de estoque).
+  async function compra(fornId: string, itens: { pecaId: string; quantidade: number; custoUnit: number }[], opts: { pago: boolean; quandoHa: number; nota?: string; descForCaixa: string }) {
+    const valorTotal = round2(itens.reduce((s, i) => s + i.custoUnit * i.quantidade, 0));
+    const c = await prisma.compra.create({
+      data: {
+        fornecedorId: fornId,
+        valorTotal,
+        numeroNota: opts.nota ?? null,
+        status: opts.pago ? 'PAGA' : 'PENDENTE',
+        pagoEm: opts.pago ? noMes(opts.quandoHa) : null,
+        data: noMes(opts.quandoHa),
+        itens: { create: itens },
+      },
+    });
+    if (opts.pago) {
+      await prisma.lancamentoCaixa.create({
+        data: { tipo: 'SAIDA', origem: 'DESPESA', descricao: opts.descForCaixa, valor: valorTotal, categoria: 'Compra de peças', usuarioId: dono.id, data: noMes(opts.quandoHa) },
+      });
+    }
+    return c;
+  }
+  // Duas em aberto (aparecem em "a pagar" por distribuidor) e uma já acertada.
+  await compra(fornSul.id, [
+    { pecaId: peca.oleo.id, quantidade: 20, custoUnit: 22 },
+    { pecaId: peca.filtroOleo.id, quantidade: 10, custoUnit: 14 },
+  ], { pago: false, quandoHa: 5, nota: '10457', descForCaixa: '' });
+  await compra(fornExpress.id, [
+    { pecaId: peca.pastilha.id, quantidade: 4, custoUnit: 60 },
+  ], { pago: false, quandoHa: 2, descForCaixa: '' });
+  await compra(fornSul.id, [
+    { pecaId: peca.filtroAr.id, quantidade: 10, custoUnit: 18 },
+  ], { pago: true, quandoHa: 8, nota: '10388', descForCaixa: 'Compra — Distribuidora Auto Sul' });
+  console.log('🚚 3 compras (2 a pagar: Auto Sul + Express, 1 acertada)');
 
   // ---- Agenda (próximos dias) ----
   await prisma.visita.createMany({

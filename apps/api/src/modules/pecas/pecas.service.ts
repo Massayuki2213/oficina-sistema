@@ -1,4 +1,4 @@
-import type { Peca as PrismaPeca } from '@prisma/client';
+import type { Peca as PrismaPeca, Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { redis } from '../../lib/redis.js';
 import type { CreatePecaInput, UpdatePecaInput, EntradaEstoqueInput } from './pecas.schema.js';
@@ -11,6 +11,44 @@ const invalidarCache = () => redis.del(CACHE_KEY);
 function calcularMargem(custo: number, venda: number): number | null {
   if (!custo || custo <= 0) return null;
   return Number((((venda - custo) / custo) * 100).toFixed(2));
+}
+
+/**
+ * Núcleo da entrada de estoque (RN-04), reutilizado pela entrada avulsa e pela
+ * compra do distribuidor: registra o movimento, soma a quantidade e recalcula o
+ * custo médio ponderado (quando um novo custo é informado). Roda dentro da
+ * transação que o chamador passar — a compra baixa vários itens de uma vez.
+ */
+export async function aplicarEntradaEstoque(
+  tx: Prisma.TransactionClient,
+  pecaId: string,
+  quantidade: number,
+  custoUnit: number | null,
+  motivo: string,
+) {
+  const peca = await tx.peca.findUnique({ where: { id: pecaId } });
+  if (!peca) throw new Error(`Peça ${pecaId} não encontrada`);
+
+  const custoAtual = Number(peca.precoCusto);
+  let novoCusto = custoAtual;
+  if (custoUnit != null) {
+    const totalAtual = peca.estoqueAtual * custoAtual;
+    const totalEntrada = quantidade * custoUnit;
+    const novaQtd = peca.estoqueAtual + quantidade;
+    novoCusto = novaQtd > 0 ? Number(((totalAtual + totalEntrada) / novaQtd).toFixed(2)) : custoUnit;
+  }
+
+  await tx.movimentoEstoque.create({
+    data: { pecaId, tipo: 'ENTRADA', quantidade, custoUnit: custoUnit ?? null, motivo },
+  });
+  return tx.peca.update({
+    where: { id: pecaId },
+    data: {
+      estoqueAtual: { increment: quantidade },
+      precoCusto: novoCusto,
+      margemPct: calcularMargem(novoCusto, Number(peca.precoVenda)),
+    },
+  });
 }
 
 // Converte os Decimals do Prisma para number e marca estoque baixo (RN-02),
@@ -102,41 +140,14 @@ export async function deactivatePeca(id: string) {
   return toDTO(peca);
 }
 
-// Entrada de estoque (RN-04): soma a quantidade, gera o movimento e
-// recalcula o custo médio ponderado quando informado um novo custo.
+// Entrada de estoque avulsa (RN-04) — ex: reposição pelo leitor de código.
 export async function entradaEstoque(id: string, input: EntradaEstoqueInput) {
-  const peca = await prisma.peca.findUnique({ where: { id } });
-  if (!peca) return null;
+  const existe = await prisma.peca.findUnique({ where: { id }, select: { id: true } });
+  if (!existe) return null;
 
-  const custoAtual = Number(peca.precoCusto);
-  let novoCusto = custoAtual;
-  if (input.custoUnit != null) {
-    const totalAtual = peca.estoqueAtual * custoAtual;
-    const totalEntrada = input.quantidade * input.custoUnit;
-    const novaQtd = peca.estoqueAtual + input.quantidade;
-    novoCusto = novaQtd > 0 ? Number(((totalAtual + totalEntrada) / novaQtd).toFixed(2)) : input.custoUnit;
-  }
-  const novaMargem = calcularMargem(novoCusto, Number(peca.precoVenda));
-
-  const atualizada = await prisma.$transaction(async (tx) => {
-    await tx.movimentoEstoque.create({
-      data: {
-        pecaId: id,
-        tipo: 'ENTRADA',
-        quantidade: input.quantidade,
-        custoUnit: input.custoUnit ?? null,
-        motivo: input.motivo ?? 'Entrada via leitor',
-      },
-    });
-    return tx.peca.update({
-      where: { id },
-      data: {
-        estoqueAtual: { increment: input.quantidade },
-        precoCusto: novoCusto,
-        margemPct: novaMargem,
-      },
-    });
-  });
+  const atualizada = await prisma.$transaction((tx) =>
+    aplicarEntradaEstoque(tx, id, input.quantidade, input.custoUnit ?? null, input.motivo ?? 'Entrada via leitor'),
+  );
 
   await invalidarCache();
   return toDTO(atualizada);

@@ -94,6 +94,13 @@ enum StatusParcela {
   ATRASADA
 }
 
+// Compra de peças do distribuidor: PENDENTE = comprada a prazo (dívida),
+// PAGA = acertada (já saiu do caixa).
+enum StatusCompra {
+  PENDENTE
+  PAGA
+}
+
 // ---------------------- USUÁRIOS / ACESSO ----------------------
 
 model Usuario {
@@ -186,6 +193,7 @@ model Fornecedor {
 
   pecas        Peca[]
   despesas     Despesa[]
+  compras      Compra[]
 
   @@map("fornecedores")
 }
@@ -210,6 +218,7 @@ model Peca {
   orcamentoItens OrcamentoPeca[]
   osItens        OSPeca[]
   movimentos     MovimentoEstoque[]
+  comprasItens   CompraItem[]
 
   @@index([nome])
   @@map("pecas")
@@ -416,6 +425,43 @@ model MovimentoEstoque {
 
   @@index([pecaId])
   @@map("movimentos_estoque")
+}
+
+// ---------------------- COMPRAS (contas a pagar) ----------------------
+
+// Nota de entrada de peças de um distribuidor. Os itens dão entrada no
+// estoque ao registrar; o dinheiro só sai do caixa quando a compra é paga.
+model Compra {
+  id           String       @id @default(cuid())
+  numero       Int          @unique @default(autoincrement())
+  fornecedorId String       @map("fornecedor_id")
+  data         DateTime     @default(now())
+  numeroNota   String?      @map("numero_nota")
+  valorTotal   Decimal      @map("valor_total") @db.Decimal(10, 2)
+  status       StatusCompra @default(PENDENTE)
+  pagoEm       DateTime?    @map("pago_em")
+  observacoes  String?
+
+  fornecedor   Fornecedor   @relation(fields: [fornecedorId], references: [id])
+  itens        CompraItem[]
+
+  @@index([fornecedorId])
+  @@index([data])
+  @@map("compras")
+}
+
+model CompraItem {
+  id         String  @id @default(cuid())
+  compraId   String  @map("compra_id")
+  pecaId     String  @map("peca_id")
+  quantidade Int
+  custoUnit  Decimal @map("custo_unit") @db.Decimal(10, 2)
+
+  compra     Compra  @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  peca       Peca    @relation(fields: [pecaId], references: [id])
+
+  @@index([compraId])
+  @@map("compra_itens")
 }
 
 // ---------------------- AUDITORIA ----------------------
