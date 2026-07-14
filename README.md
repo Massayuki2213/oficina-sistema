@@ -83,6 +83,35 @@ Teste se está tudo de pé: <http://localhost:3333/health>
 | `npm run db:seed`     | Popula dados de exemplo                    |
 | `npm run dev:api`     | Roda a API em modo desenvolvimento         |
 
+## 👤 Usuários e senhas
+
+O seed cria 3 usuários com a senha padrão `hermes123` (`dono@`, `atendente@`, `mecanico@hermes.local`).
+
+> ⚠️ **Antes de usar de verdade na oficina**, entre como Dono e vá em **Configurações**: troque a
+> sua senha, crie os usuários reais e **inative os de demonstração**. Lá o Dono também redefine a
+> senha de quem esqueceu, e qualquer perfil troca a própria senha.
+
+O sistema não deixa a oficina se trancar para fora: o único Dono ativo não pode ser rebaixado nem
+inativado, e ninguém tira o próprio acesso.
+
+## 💾 Backup e restauração
+
+A API gera sozinha uma cópia do banco quando a mais recente passa de **24h** — inclusive
+ao ligar o computador, para cobrir o dia em que a oficina ficou fechada. Os arquivos vão
+para `apps/api/backups/` e os mais velhos que `BACKUP_RETENCAO_DIAS` (padrão: 14) são
+apagados, mantendo sempre as 3 últimas cópias.
+
+O Dono também pode gerar uma cópia na hora: `POST /backup` (e `GET /backup` mostra a
+situação). Para **restaurar** um backup:
+
+```bash
+docker exec -i -e PGPASSWORD=hermes_dev hermes-postgres \
+  psql -U hermes -d hermes < apps/api/backups/hermes-AAAA-MM-DD_HHMMSS.sql
+```
+
+> ⚠️ Guarde uma cópia **fora do computador da oficina** (pendrive/nuvem): backup no mesmo
+> HD não protege contra o HD queimar.
+
 ## 📍 Onde estamos (Roadmap — seção 11)
 
 - [x] **Fase 1 — Protótipo clicável** (`/prototipo`)

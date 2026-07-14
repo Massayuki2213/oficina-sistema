@@ -305,9 +305,13 @@ Telas que vou detalhar na próxima fase: Dashboard, Cadastro de Cliente/Carro, N
 
 | Régua | % |
 |---|---|
-| Protótipo funcional / demonstração | ~75% |
-| **Uso diário real na oficina (usabilidade)** | **~40%** |
-| Produto comercial (vender a outras oficinas) | ~30% |
+| Protótipo funcional / demonstração | ~85% |
+| **Uso diário real na oficina (usabilidade)** | **~70%** *(Fase 5 concluída)* |
+| Produto comercial (vender a outras oficinas) | ~35% |
+
+O que ainda segura: o sistema **roda no navegador** (não é um programa instalável), a senha
+padrão `hermes123` só sai pelo banco, e **não há um único teste automatizado** — com regras de
+dinheiro e estoque, isso é risco real. É o conteúdo da Fase 6.
 
 O que segura a usabilidade **não é funcionalidade** — é o que aparece quando alguém usa **todo dia e comete erros**: corrigir um cadastro, imprimir um comprovante, ver o histórico do cliente e não perder dados se o PC falhar.
 
@@ -316,17 +320,19 @@ O que segura a usabilidade **não é funcionalidade** — é o que aparece quand
 **✅ Fase 1–4 — Base + fluxo completo** *(concluídas)*
 Cadastros, orçamento → OS, estoque com baixa automática, financeiro completo, agenda, login/perfis.
 
-**🎯 Fase 5 — Usabilidade essencial** *(próxima — leva a usabilidade de ~40% para ~70%)*
-- **Editar/excluir** registros: cliente, carro, serviço, peça e orçamento em rascunho *(hoje o sistema só cria)*.
-- **Ficha do cliente** e **histórico do carro por placa** (RN-16/17): carros, OS passadas e fiado em aberto num clique.
-- **Impressão / PDF** do Orçamento e da OS — o comprovante que a oficina entrega ao cliente.
-- **Backup automático** diário do banco — para não perder tudo se o computador falhar.
-- **Máscaras** (CPF/CNPJ, telefone, placa, dinheiro) e **avisos "toast"** no lugar dos pop-ups do navegador.
+**✅ Fase 5 — Usabilidade essencial** *(concluída — usabilidade de ~40% para ~70%)*
+- ✅ **Editar/excluir** registros: cliente, carro, serviço, peça e **orçamento** (bloqueado depois de virar OS).
+- ✅ **Ficha do cliente** e **histórico do carro por placa** (RN-16/17): carros, OS passadas e fiado em aberto num clique.
+- ✅ **Impressão / PDF** do Orçamento e da OS — o comprovante que a oficina entrega ao cliente.
+- ✅ **Backup automático** do banco (24h, roda também ao ligar o PC) + `POST /backup` para o Dono gerar na hora.
+- ✅ **Máscaras** (CPF/CNPJ, telefone, placa, dinheiro) e **avisos "toast"** no lugar dos pop-ups do navegador.
 
-**Fase 6 — Produção e administração** *(vira um app "de verdade", instalável e autônomo → ~85%)*
+**🎯 Fase 6 — Produção e administração** *(em andamento — vira um app "de verdade", instalável e autônomo → ~85%)*
 - **Empacotar em Electron** (programa instalável no Windows) + build de produção da API.
-- **Tela de Configurações**: dados da oficina, logo no PDF, margem padrão, % de desconto que exige senha.
-- **Gestão de usuários** pela interface (criar/editar, trocar senha, ativar/inativar) — elimina a senha padrão `hermes123`.
+- ✅ **Tela de Configurações** (`/configuracoes`): usuários, minha senha e situação do backup.
+  *Ainda falta: dados da oficina, logo no PDF, margem padrão, % de desconto que exige senha.*
+- ✅ **Gestão de usuários** pela interface (criar/editar, redefinir senha, ativar/inativar) — elimina a senha padrão `hermes123`.
+  Travas: o único Dono ativo não pode ser rebaixado nem inativado, e ninguém tira o próprio acesso.
 - **Alertas ativos**: revisão vencida (RN-20), conflito de horário na agenda (RN-19), bloqueio de fiado em atraso (RN-11.2), expiração automática de orçamento (RN-06).
 - **Log de auditoria** visível (quem fez o quê).
 
@@ -343,14 +349,17 @@ Cadastros, orçamento → OS, estoque com baixa automática, financeiro completo
 
 ## 12. Próximos Passos (a partir daqui)
 
-Documento e projeto estão **alinhados**. Começamos a **Fase 5 — Usabilidade essencial**, nesta ordem de maior impacto:
+A **Fase 5 está concluída**: dá para corrigir cadastros, imprimir o comprovante, consultar a ficha
+do cliente e os dados têm cópia de segurança diária. O sistema aguenta o dia a dia da oficina.
 
-1. **Editar/corrigir registros** — remove a maior frustração do dia a dia.
-2. **Imprimir / PDF do Orçamento e da OS** — o que o cliente leva na mão.
-3. **Ficha do cliente + histórico do carro** — consulta rápida no balcão (RN-16/17).
-4. **Backup automático do banco** — segurança dos dados.
+Seguimos para a **Fase 6 — Produção e administração**, nesta ordem de maior impacto:
 
-Concluída a Fase 5, seguimos para a **Fase 6** (Electron + Configurações + gestão de usuários) e, por fim, os diferenciais da **Fase 7**.
+1. **Gestão de usuários pela tela** — hoje a senha padrão `hermes123` só muda no banco. É a maior
+   brecha aberta.
+2. **Empacotar em Electron** — vira um programa instalável, em vez de um site no navegador.
+3. **Tela de Configurações** — dados da oficina e logo no PDF impresso.
+4. **Alertas ativos** — revisão vencida (RN-20), conflito de agenda (RN-19), fiado em atraso (RN-11.2).
+5. **Testes automatizados** do núcleo financeiro (orçamento → OS → estoque → caixa).
 
 ---
 
