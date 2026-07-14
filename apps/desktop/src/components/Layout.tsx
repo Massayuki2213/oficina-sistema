@@ -14,6 +14,8 @@ import {
   Receipt,
   BarChart3,
   Settings,
+  Truck,
+  ShoppingCart,
   Wrench as Logo,
   type LucideIcon,
 } from 'lucide-react';
@@ -30,6 +32,7 @@ const GRUPOS: { titulo: string; itens: Item[] }[] = [
       { to: '/carros', label: 'Carros', icon: Car },
       { to: '/servicos', label: 'Serviços', icon: Wrench },
       { to: '/estoque', label: 'Estoque', icon: Package },
+      { to: '/distribuidores', label: 'Distribuidores', icon: Truck },
     ],
   },
   {
@@ -45,6 +48,7 @@ const GRUPOS: { titulo: string; itens: Item[] }[] = [
     itens: [
       { to: '/caixa', label: 'Livro-Caixa', icon: Wallet, financeiro: true },
       { to: '/despesas', label: 'Despesas', icon: TrendingDown, financeiro: true },
+      { to: '/compras', label: 'Compras', icon: ShoppingCart, financeiro: true },
       { to: '/contas-receber', label: 'Contas a Receber', icon: Receipt, financeiro: true },
       { to: '/relatorios', label: 'Relatórios', icon: BarChart3, financeiro: true },
     ],

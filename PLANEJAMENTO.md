@@ -333,6 +333,10 @@ Cadastros, orçamento → OS, estoque com baixa automática, financeiro completo
   *Ainda falta: dados da oficina, logo no PDF, margem padrão, % de desconto que exige senha.*
 - ✅ **Gestão de usuários** pela interface (criar/editar, redefinir senha, ativar/inativar) — elimina a senha padrão `hermes123`.
   Travas: o único Dono ativo não pode ser rebaixado nem inativado, e ninguém tira o próprio acesso.
+- ✅ **Compras e contas a pagar**: cadastro de **distribuidores**, registro da **compra** (vários itens de
+  uma vez, dando entrada no estoque e cadastrando peça nova na hora), visão de **quanto se deve a cada
+  distribuidor** e **acerto** (pagar uma compra ou quitar todo o saldo). Compra a prazo entra no estoque
+  mas só sai do caixa quando paga (regime de caixa, sem dupla contagem no lucro).
 - **Alertas ativos**: revisão vencida (RN-20), conflito de horário na agenda (RN-19), bloqueio de fiado em atraso (RN-11.2), expiração automática de orçamento (RN-06).
 - **Log de auditoria** visível (quem fez o quê).
 
