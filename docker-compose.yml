@@ -1,6 +1,10 @@
 # Hermes — infraestrutura local de desenvolvimento
 # Sobe o banco de dados (PostgreSQL) e o cache (Redis).
 # Uso:  docker compose up -d      |  para: docker compose down
+#
+# As portas do HOST são configuráveis pelo .env (POSTGRES_PORT / REDIS_PORT).
+# Em máquina que já roda outro Postgres na 5432, é só mudar lá — sem editar
+# este arquivo. O padrão continua sendo a porta de sempre.
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,7 +15,7 @@ services:
       POSTGRES_PASSWORD: hermes_dev
       POSTGRES_DB: hermes
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - hermes_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -26,7 +30,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - hermes_redisdata:/data
     healthcheck:
