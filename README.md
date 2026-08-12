@@ -1,120 +1,117 @@
-# Hermes — Sistema de Gestão para Oficina Mecânica
+# Hermes
 
-Monorepo do sistema Hermes. Documento de arquitetura completo em [PLANEJAMENTO.md](PLANEJAMENTO.md).
+**Sistema de gestão para oficinas mecânicas.** Do carro que chega na porta ao lucro do fim do mês — em um só lugar.
 
-## 🗂 Estrutura
+> A oficina não perde dinheiro porque trabalha pouco. Perde porque o orçamento sumiu, a peça saiu do estoque e ninguém anotou, o fiado ficou no papel e, no fim do mês, ninguém sabe dizer se sobrou alguma coisa.
+>
+> O Hermes existe para acabar com isso.
+
+---
+
+## Para quem é
+
+Oficinas mecânicas independentes, centros automotivos, auto elétricas e funilarias — de **2 a 10 pessoas**, que hoje trabalham no caderno, no bloco de orçamento ou numa planilha que só uma pessoa entende.
+
+| Quem usa | O que ganha |
+|---|---|
+| **Dono** | Enxerga faturamento, despesa e **lucro real** sem depender de ninguém. Sabe quem fez o quê. |
+| **Recepção / Atendente** | Faz um orçamento completo em menos de um minuto, com preço certo e sem calculadora. |
+| **Mecânico** | Vê só as ordens dele, aponta o que executou e dá baixa na peça. Sem acesso ao financeiro. |
+
+Não é um sistema para revenda de peças nem para concessionária. É feito para a oficina que vive de **serviço**, com carro parado por dias e cliente que volta.
+
+---
+
+## O problema que ele resolve
+
+| Como é hoje | Com o Hermes |
+|---|---|
+| Orçamento no papel, que some ou vira desconto na conversa | Orçamento digital, com validade, impresso ou em PDF — e vira Ordem de Serviço em **1 clique** |
+| Ninguém sabe quanto tem de peça na prateleira | Estoque baixa sozinho quando a peça entra na OS, e avisa antes de acabar |
+| "Acho que esse mês foi bom" | Relatório de **lucro real**: entradas − despesas − custo das peças |
+| Fiado anotado num caderno atrás do balcão | Contas a Receber com parcelas, vencimento e alerta de atraso |
+| Cliente liga e ninguém lembra do carro dele | Digitou a placa, apareceu todo o histórico: serviços, datas e KM |
+| Compra do distribuidor misturada com o caixa do dia | Compras e contas a pagar separadas, com saldo por distribuidor |
+
+---
+
+## O que está dentro
+
+**Atendimento e operação**
+Cadastro de clientes e veículos com busca por placa · catálogo de serviços com preço de mão de obra · orçamento com validade · conversão de orçamento em Ordem de Serviço · acompanhamento de OS por status (aberta, em execução, aguardando peça, concluída, entregue) · agenda de visitas e retornos · **impressão e PDF** do orçamento e da OS para entregar ao cliente.
+
+**Estoque**
+Peças e produtos com custo, venda e margem · entrada e saída com histórico de movimento · **leitura por código de barras** · estoque mínimo com alerta · localização na prateleira.
+
+**Financeiro**
+Livro-caixa alimentado automaticamente quando a OS é paga · despesas por categoria · **Contas a Receber** para parcelado e fiado · **Compras e Contas a Pagar** com saldo por distribuidor e acerto de dívida · relatórios com gráficos de faturamento, lucro, serviços mais vendidos e para onde o dinheiro está indo.
+
+**Administração**
+Três perfis de acesso (Dono, Atendente, Mecânico) com permissão por ação · gestão de usuários pela própria tela · **backup automático diário** do banco de dados, inclusive ao ligar o computador.
+
+---
+
+## O dia a dia, em 8 passos
 
 ```
-oficina-sistema/
-├── PLANEJAMENTO.md         # documento de planejamento e arquitetura (v1.1)
-├── prototipo/              # protótipo clicável (Fase 1) — abra o index.html no navegador
-├── docker-compose.yml      # sobe o banco (PostgreSQL) + cache (Redis) local
-├── .env.example            # variáveis de ambiente (copie para .env)
-│
-├── apps/
-│   ├── api/                # 🧠 Backend — Fastify + Prisma + Redis (regras de negócio)
-│   │   ├── prisma/
-│   │   │   ├── schema.prisma   # modelo de dados (banco)
-│   │   │   └── seed.ts         # dados iniciais
-│   │   └── src/
-│   │       ├── lib/            # infra: env, prisma (banco), redis (cache)
-│   │       ├── modules/        # um por domínio (routes + service + schema)
-│   │       │   ├── health/     #   status da API/banco/cache
-│   │       │   └── clientes/   #   CRUD + busca + cache
-│   │       ├── app.ts          # monta o Fastify e registra os módulos
-│   │       └── server.ts       # sobe o servidor
-│   │
-│   └── desktop/            # 💻 App Desktop — Electron + React (migra do protótipo)
-│
-└── packages/
-    └── shared/             # contrato compartilhado (API + Desktop)
-        └── src/
-            ├── enums.ts        # enums do domínio + rótulos pt-BR
-            ├── entities.ts     # entidades do domínio (seção 4)
-            └── permissions.ts  # permissões por perfil
+Placa digitada  →  histórico do carro na tela  →  orçamento montado (serviços + peças)
+      →  cliente aprova  →  1 clique: vira Ordem de Serviço  →  estoque baixa sozinho
+            →  mecânico executa e aponta  →  pagamento entra no caixa
+                  →  fim do mês: relatório mostra o lucro real
 ```
 
-## 🧱 Stack
+Nenhuma informação é digitada duas vezes. É esse encadeamento — e não a quantidade de telas — que faz a diferença no balcão.
 
-| Camada        | Tecnologia                    |
-|---------------|-------------------------------|
-| App Desktop   | Electron + React + TypeScript |
-| Backend/API   | Node.js + Fastify + TypeScript|
-| **Banco**     | **PostgreSQL** (via Prisma)   |
-| **Cache**     | **Redis** (via ioredis)       |
-| Login         | JWT + perfis (Dono/Atendente/Mecânico) |
+---
 
-## 🚀 Começando
+## Por que o Hermes
 
-Pré-requisitos: **Node 20+** e **Docker Desktop**.
+- **Rápido onde precisa ser rápido.** O balcão não pode esperar. Busca por placa, botões grandes, poucos cliques.
+- **Feito para quem não é de computador.** Máscaras de CPF, telefone, placa e dinheiro. Avisos claros no lugar de mensagem de erro técnica.
+- **Mostra lucro, não só faturamento.** A maioria dos sistemas mostra quanto entrou. O Hermes desconta despesa e custo de peça e diz quanto **sobrou**.
+- **Dados compartilhados.** Recepção, oficina e escritório enxergam a mesma informação, na hora.
+- **Cada um vê o que deve ver.** O mecânico não abre o financeiro. O atendente não altera preço de custo.
+- **Backup sem ninguém lembrar de fazer.** Cópia diária automática, com retenção configurável.
 
-```bash
-# 1. Copie as variáveis de ambiente
-cp .env.example .env
+---
 
-# 2. Suba o banco (PostgreSQL) e o cache (Redis)
-npm run infra:up
+## Tecnologia
 
-# 3. Instale as dependências (workspaces)
-npm install
+Construído com tecnologia atual e de mercado — não é planilha com botão.
 
-# 4. Gere o client do Prisma e crie as tabelas
-npm run db:generate
-npm run db:migrate
+| Camada | Tecnologia |
+|---|---|
+| Aplicação | React + TypeScript (empacotamento Electron para Windows em andamento) |
+| Servidor / regras de negócio | Node.js + Fastify + TypeScript |
+| Banco de dados | PostgreSQL |
+| Cache | Redis |
+| Acesso a dados | Prisma ORM |
+| Segurança | Login com JWT, senhas criptografadas, permissão por perfil |
 
-# 5. (opcional) Popule com dados de exemplo
-npm run db:seed
+As regras de negócio (baixa de estoque, cálculo de lucro, geração de contas a receber) ficam no servidor, não na tela — o que garante que o número é o mesmo para todo mundo.
 
-# 6. Rode a API
-npm run dev:api
-```
+---
 
-Teste se está tudo de pé: <http://localhost:3333/health>
-(deve responder `database: up` e `cache: up`).
+## Status do produto
 
-## 🔧 Scripts úteis
+O fluxo de negócio completo — **do orçamento ao lucro** — está funcionando: 17 módulos no servidor e 15 telas de trabalho ligadas a ele de verdade (não é maquete).
 
-| Comando               | O que faz                                  |
-|-----------------------|--------------------------------------------|
-| `npm run infra:up`    | Sobe PostgreSQL + Redis (Docker)           |
-| `npm run infra:down`  | Derruba os containers                      |
-| `npm run db:migrate`  | Cria/atualiza as tabelas                   |
-| `npm run db:studio`   | Abre o Prisma Studio (ver o banco no navegador) |
-| `npm run db:seed`     | Popula dados de exemplo                    |
-| `npm run dev:api`     | Roda a API em modo desenvolvimento         |
+**Em desenvolvimento (Fase 6 — produção):**
+instalador para Windows · dados da oficina e logo no PDF · alertas ativos (revisão vencida, conflito de agenda, fiado em atraso) · log de auditoria visível.
 
-## 👤 Usuários e senhas
+**No roadmap (Fase 7 — diferenciais):**
+envio de orçamento e OS por WhatsApp · ordem de serviço em garantia · comissão por mecânico · nota fiscal (NF-e / NFC-e).
 
-O seed cria 3 usuários com a senha padrão `hermes123` (`dono@`, `atendente@`, `mecanico@hermes.local`).
+Planejamento completo, regras de negócio e arquitetura: [PLANEJAMENTO.md](PLANEJAMENTO.md).
 
-> ⚠️ **Antes de usar de verdade na oficina**, entre como Dono e vá em **Configurações**: troque a
-> sua senha, crie os usuários reais e **inative os de demonstração**. Lá o Dono também redefine a
-> senha de quem esqueceu, e qualquer perfil troca a própria senha.
+---
 
-O sistema não deixa a oficina se trancar para fora: o único Dono ativo não pode ser rebaixado nem
-inativado, e ninguém tira o próprio acesso.
+## Ver funcionando
 
-## 💾 Backup e restauração
+O sistema tem um cenário de demonstração completo — clientes, veículos, orçamentos, ordens e movimento de caixa — para conhecer o fluxo inteiro sem precisar cadastrar nada.
 
-A API gera sozinha uma cópia do banco quando a mais recente passa de **24h** — inclusive
-ao ligar o computador, para cobrir o dia em que a oficina ficou fechada. Os arquivos vão
-para `apps/api/backups/` e os mais velhos que `BACKUP_RETENCAO_DIAS` (padrão: 14) são
-apagados, mantendo sempre as 3 últimas cópias.
+**Quer uma demonstração na sua oficina?** Entre em contato.
 
-O Dono também pode gerar uma cópia na hora: `POST /backup` (e `GET /backup` mostra a
-situação). Para **restaurar** um backup:
+---
 
-```bash
-docker exec -i -e PGPASSWORD=hermes_dev hermes-postgres \
-  psql -U hermes -d hermes < apps/api/backups/hermes-AAAA-MM-DD_HHMMSS.sql
-```
-
-> ⚠️ Guarde uma cópia **fora do computador da oficina** (pendrive/nuvem): backup no mesmo
-> HD não protege contra o HD queimar.
-
-## 📍 Onde estamos (Roadmap — seção 11)
-
-- [x] **Fase 1 — Protótipo clicável** (`/prototipo`)
-- [ ] **Fase 2 — MVP funcional**: estrutura do monorepo, banco + cache, API base ← *aqui*
-- [ ] Fase 3 — Financeiro completo
-- [ ] Fase 4 — Extras (agenda, WhatsApp, garantia, NF-e)
+<sub>Documentação técnica e ambiente de desenvolvimento: [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md)</sub>
