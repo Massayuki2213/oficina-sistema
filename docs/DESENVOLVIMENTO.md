@@ -96,6 +96,37 @@ Teste se está tudo de pé: <http://localhost:3333/health>
 | `npm run db:seed`     | Popula dados de exemplo                         |
 | `npm run dev:api`     | Roda a API em modo desenvolvimento              |
 | `npm run dev:desktop` | Roda o app em modo desenvolvimento              |
+| `npm run test:prepare`| Cria/atualiza o banco de **teste** (`hermes_test`) |
+| `npm test`            | Roda os testes automatizados                    |
+
+## Testes
+
+O núcleo financeiro tem testes automatizados: **orçamento → OS → estoque → caixa**,
+mais garantia (RN-18), agenda (RN-19), oportunidades de retorno (RN-20) e o
+mascaramento de senha na auditoria.
+
+```bash
+npm run infra:up      # Postgres precisa estar de pé
+npm run test:prepare  # cria o banco hermes_test e aplica as migrations
+npm test
+```
+
+Os testes batem num **Postgres de verdade**, não em banco falso: o que se quer
+provar é transação, baixa de estoque e lançamento no caixa — justamente o que um
+banco falso não exercita.
+
+Por isso o banco é **separado** (`hermes_test`): os testes dão `TRUNCATE` entre os
+casos, e apontar para o banco de trabalho apagaria o cenário de demonstração.
+Eles também rodam **em série**, senão limpariam as tabelas uns dos outros.
+
+Se o seu Postgres não estiver na porta 5434, defina a variável antes de rodar:
+
+```bash
+TEST_DATABASE_URL="postgresql://hermes:hermes_dev@localhost:SUA_PORTA/hermes_test?schema=public" npm test
+```
+
+> Onde vale gastar teste novo: qualquer regra que mexa em **dinheiro ou estoque**.
+> É onde o erro não aparece na tela — só no fim do mês.
 
 ## Usuários e senhas
 

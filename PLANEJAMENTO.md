@@ -134,7 +134,10 @@ Estas são as regras que fazem o sistema **evitar erros** e **funcionar como uma
 - **RN-11.1** — Formas de pagamento aceitas: **à vista, PIX, cartão, parcelado e fiado**. No parcelado/fiado, o sistema cria **Contas a Receber** com as parcelas e vencimentos, e cada parcela recebida vira uma entrada no caixa. → *por isso o cadastro de cliente é essencial: fiado é sempre vinculado a um cliente.*
 - **RN-11.2** — Cliente com fiado em atraso aparece em **alerta** e (opcional) fica bloqueado para novo fiado até quitar.
 - **RN-12** — Toda despesa gera uma **saída** no livro-caixa.
-- **RN-13** — **Lucro do período** = (entradas) − (saídas) − (custo das peças vendidas).
+- **RN-13** — **Lucro do período** = (entradas) − (saídas). ⚠️ *Corrigido:* a redação
+  original descontava também o custo das peças vendidas, o que **contaria a peça duas
+  vezes** — no regime de caixa ela já virou saída quando foi comprada do distribuidor.
+  O `custoPecasVendidas` é publicado à parte, como informação de margem.
 - **RN-14** — O sistema separa **faturamento** (o que entrou) de **lucro** (o que sobrou de verdade) — muita gente confunde isso.
 - **RN-15** — Fechamento de caixa diário: mostra abertura, entradas, saídas e saldo esperado x contado.
 
@@ -337,11 +340,16 @@ Cadastros, orçamento → OS, estoque com baixa automática, financeiro completo
   uma vez, dando entrada no estoque e cadastrando peça nova na hora), visão de **quanto se deve a cada
   distribuidor** e **acerto** (pagar uma compra ou quitar todo o saldo). Compra a prazo entra no estoque
   mas só sai do caixa quando paga (regime de caixa, sem dupla contagem no lucro).
-- **Alertas ativos**: revisão vencida (RN-20), conflito de horário na agenda (RN-19), bloqueio de fiado em atraso (RN-11.2), expiração automática de orçamento (RN-06).
-- **Log de auditoria** visível (quem fez o quê).
+- ✅ **Alertas ativos**: revisão vencida (RN-20), conflito de horário na agenda (RN-19),
+  bloqueio de fiado em atraso (RN-11.2), expiração automática de orçamento (RN-06).
+- ✅ **Log de auditoria** visível (quem fez o quê), em `/auditoria` — só o Dono.
+- ✅ **Dados da oficina + logo no PDF**, margem padrão, teto de desconto (RN-08) e prazo
+  de garantia (RN-18) configuráveis em Configurações.
+- ✅ **OS de garantia** (RN-18): sem cobrança, copiando a mão de obra, dentro do prazo.
+- ✅ **Testes automatizados** do núcleo financeiro — 66 casos contra Postgres de verdade.
 
 **Fase 7 — Diferenciais e fiscal** *(quando fizer sentido para o negócio)*
-- **OS de garantia** (RN-18) e **venda de balcão** avulsa.
+- **Venda de balcão** avulsa. *(A OS de garantia, RN-18, foi concluída na Fase 6.)*
 - Envio de Orçamento/OS por **WhatsApp**.
 - **Comissão por mecânico** e produtividade.
 - **Nota fiscal** (NF-e / NFC-e).

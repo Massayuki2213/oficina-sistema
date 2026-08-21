@@ -16,7 +16,9 @@
     "db:seed": "npm run db:seed -w @hermes/api",
     "db:studio": "npm run db:studio -w @hermes/api",
     "dev:api": "npm run dev -w @hermes/api",
-    "dev:desktop": "npm run dev -w @hermes/desktop"
+    "dev:desktop": "npm run dev -w @hermes/desktop",
+    "test": "npm run test -w @hermes/api",
+    "test:prepare": "npm run test:prepare -w @hermes/api"
   },
   "engines": {
     "node": ">=20"
