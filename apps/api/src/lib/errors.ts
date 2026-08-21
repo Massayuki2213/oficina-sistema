@@ -18,4 +18,6 @@ export class AppError extends Error {
 export const COD = {
   SENHA_DONO_NECESSARIA: 'SENHA_DONO_NECESSARIA',
   SENHA_DONO_INCORRETA: 'SENHA_DONO_INCORRETA',
+  /** Orçamento rápido tentando virar OS sem cliente/veículo. */
+  CADASTRO_NECESSARIO: 'CADASTRO_NECESSARIO',
 } as const;

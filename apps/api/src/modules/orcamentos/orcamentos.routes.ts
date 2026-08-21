@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { pode } from '@hermes/shared';
 import { authenticate, requirePermission } from '../../lib/auth.js';
-import { createOrcamentoSchema, statusOrcamentoSchema, aprovarSchema } from './orcamentos.schema.js';
+import { createOrcamentoSchema, statusOrcamentoSchema, aprovarSchema, identificarSchema } from './orcamentos.schema.js';
 import * as service from './orcamentos.service.js';
 
 export async function orcamentosRoutes(app: FastifyInstance) {
@@ -63,6 +63,16 @@ export async function orcamentosRoutes(app: FastifyInstance) {
     return service.alterarStatus(id, parsed.data.status);
   });
 
+  // PATCH /orcamentos/:id/identificar — orçamento rápido ganha cliente e veículo
+  app.patch('/:id/identificar', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = identificarSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
+    }
+    return service.identificarOrcamento(id, parsed.data.clienteId, parsed.data.carroId);
+  });
+
   // POST /orcamentos/:id/aprovar — RN-07: aprova e gera a OS em 1 clique
   app.post('/:id/aprovar', async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -70,7 +80,10 @@ export async function orcamentosRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
     }
-    const resultado = await service.aprovarParaOS(id, parsed.data.mecanicoId);
+    const resultado = await service.aprovarParaOS(id, parsed.data.mecanicoId, {
+      clienteId: parsed.data.clienteId,
+      carroId: parsed.data.carroId,
+    });
     return reply.code(201).send(resultado);
   });
 }

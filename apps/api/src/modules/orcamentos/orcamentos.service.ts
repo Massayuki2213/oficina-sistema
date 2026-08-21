@@ -81,6 +81,11 @@ export async function listOrcamentos(busca?: string) {
           OR: [
             { cliente: { nome: { contains: busca, mode: 'insensitive' } } },
             { carro: { placa: { contains: busca.toUpperCase().replace(/[^A-Z0-9]/g, '') } } },
+            // O orçamento rápido não tem cadastro: sem isto ele seria
+            // impossível de achar depois que saísse da primeira página.
+            { contatoNome: { contains: busca, mode: 'insensitive' } },
+            { contatoTelefone: { contains: busca } },
+            { veiculoDescricao: { contains: busca, mode: 'insensitive' } },
           ],
         }
       : {},
@@ -95,6 +100,13 @@ export async function getOrcamento(id: string) {
 }
 
 const pct = (parte: number, todo: number) => (todo > 0 ? (parte / todo) * 100 : 0);
+
+/** O veículo precisa existir e ser daquele cliente. */
+async function validarDono(clienteId: string, carroId: string) {
+  const carro = await prisma.carro.findUnique({ where: { id: carroId } });
+  if (!carro) throw new AppError(400, 'Veículo não encontrado');
+  if (carro.clienteId !== clienteId) throw new AppError(400, 'O veículo não pertence a esse cliente');
+}
 
 /**
  * RN-08 — desconto acima do teto configurado exige a senha do Dono.
@@ -124,10 +136,16 @@ async function validarTetoDeDesconto(subtotal: number, desconto: number, senhaDo
  * (RN-09: total = mão de obra + peças − desconto). Serve para criar e para editar.
  */
 async function montarOrcamento(data: CreateOrcamentoInput) {
-  // O veículo precisa existir e pertencer ao cliente informado.
-  const carro = await prisma.carro.findUnique({ where: { id: data.carroId } });
-  if (!carro) throw new AppError(400, 'Veículo não encontrado');
-  if (carro.clienteId !== data.clienteId) throw new AppError(400, 'O veículo não pertence a esse cliente');
+  // RN-10 também aqui, e não só no schema de entrada: um orçamento sem item é
+  // um documento de valor zero: nada impede que outro trecho do servidor chame
+  // este service um dia, e a regra não pode depender de quem chamou.
+  if (data.servicos.length + data.pecas.length === 0) {
+    throw new AppError(400, 'O orçamento precisa de ao menos 1 serviço ou peça');
+  }
+
+  // No orçamento rápido não há veículo cadastrado — não há o que conferir.
+  // Quando há, ele precisa existir e pertencer ao cliente informado.
+  if (data.carroId) await validarDono(data.clienteId!, data.carroId);
 
   // Busca os itens do catálogo para "congelar" o preço no orçamento.
   const [servicos, pecas] = await Promise.all([
@@ -157,8 +175,12 @@ async function montarOrcamento(data: CreateOrcamentoInput) {
   await validarTetoDeDesconto(subtotal, desconto, data.senhaDono);
 
   return {
-    clienteId: data.clienteId,
-    carroId: data.carroId,
+    clienteId: data.clienteId ?? null,
+    carroId: data.carroId ?? null,
+    // Só faz sentido guardar o contato solto enquanto não há cadastro de verdade.
+    contatoNome: data.clienteId ? null : (data.contatoNome ?? null),
+    contatoTelefone: data.clienteId ? null : (data.contatoTelefone ?? null),
+    veiculoDescricao: data.carroId ? null : (data.veiculoDescricao ?? null),
     validade: new Date(Date.now() + data.validadeDias * 24 * 60 * 60 * 1000),
     subtotal,
     desconto,
@@ -232,7 +254,7 @@ export async function alterarStatus(id: string, status: StatusOrcamentoInput['st
 
 // RN-07 (o fluxo-estrela): aprova o orçamento e gera a OS em 1 passo,
 // copiando os itens e baixando o estoque das peças (RN-01).
-export async function aprovarParaOS(id: string, mecanicoId?: string) {
+export async function aprovarParaOS(id: string, mecanicoId?: string, identificacao?: { clienteId?: string; carroId?: string }) {
   const orc = await prisma.orcamento.findUnique({
     where: { id },
     include: { servicos: true, pecas: { include: { peca: true } }, ordem: true },
@@ -240,6 +262,20 @@ export async function aprovarParaOS(id: string, mecanicoId?: string) {
   if (!orc) throw new AppError(404, 'Orçamento não encontrado');
   if (orc.ordem) throw new AppError(409, 'Este orçamento já virou uma Ordem de Serviço');
   if (orc.status === 'RECUSADO') throw new AppError(400, 'Orçamento recusado não pode virar OS');
+
+  // O orçamento rápido não tem dono nem veículo. Aqui isso deixa de ser
+  // opcional: a OS baixa estoque, dá garantia e entra no histórico do carro —
+  // tudo isso precisa saber em qual veículo se mexeu e para quem.
+  const clienteId = orc.clienteId ?? identificacao?.clienteId;
+  const carroId = orc.carroId ?? identificacao?.carroId;
+  if (!clienteId || !carroId) {
+    throw new AppError(
+      400,
+      'Este é um orçamento rápido. Informe o cliente e o veículo para abrir a Ordem de Serviço.',
+      COD.CADASTRO_NECESSARIO,
+    );
+  }
+  if (!orc.carroId) await validarDono(clienteId, carroId);
 
   // RN-06: confere a validade aqui também, e não só o status. O status pode estar
   // velho na mão de quem deixou a tela aberta — a data é a fonte da verdade.
@@ -255,8 +291,8 @@ export async function aprovarParaOS(id: string, mecanicoId?: string) {
     const os = await tx.ordemServico.create({
       data: {
         orcamentoId: orc.id,
-        clienteId: orc.clienteId,
-        carroId: orc.carroId,
+        clienteId,
+        carroId,
         mecanicoId: mecanicoId ?? null,
         status: statusOS,
         total: orc.total,
@@ -273,7 +309,18 @@ export async function aprovarParaOS(id: string, mecanicoId?: string) {
       });
     }
 
-    await tx.orcamento.update({ where: { id: orc.id }, data: { status: 'APROVADO' } });
+    await tx.orcamento.update({
+      where: { id: orc.id },
+      data: {
+        status: 'APROVADO',
+        clienteId,
+        carroId,
+        // O contato solto perde a razão de existir quando há cadastro.
+        contatoNome: null,
+        contatoTelefone: null,
+        veiculoDescricao: null,
+      },
+    });
     return os;
   });
 
@@ -290,4 +337,36 @@ export async function aprovarParaOS(id: string, mecanicoId?: string) {
     },
   });
   return { os: osToDTO(osCompleta), aguardandoPeca: faltaPeca };
+}
+
+/**
+ * Transforma um orçamento RÁPIDO em completo: amarra a um cliente e veículo
+ * cadastrados, sem redigitar os itens.
+ *
+ * É o caminho do "aquele preço que vocês me passaram por telefone" — o cliente
+ * voltou, agora tem cadastro, e o orçamento continua valendo.
+ */
+export async function identificarOrcamento(id: string, clienteId: string, carroId: string) {
+  const orc = await prisma.orcamento.findUnique({ where: { id }, include: { ordem: true } });
+  if (!orc) throw new AppError(404, 'Orçamento não encontrado');
+  if (orc.ordem) throw new AppError(409, 'Este orçamento já virou uma Ordem de Serviço');
+  if (orc.clienteId && orc.carroId) throw new AppError(400, 'Este orçamento já está identificado');
+
+  await validarDono(clienteId, carroId);
+
+  const atualizado = await prisma.orcamento.update({
+    where: { id },
+    data: {
+      clienteId,
+      carroId,
+      // O contato solto era o substituto do cadastro; com cadastro, ele sai.
+      contatoNome: null,
+      contatoTelefone: null,
+      veiculoDescricao: null,
+    },
+    include: fullInclude,
+  });
+
+  await invalidarCache();
+  return toDTO(atualizado);
 }

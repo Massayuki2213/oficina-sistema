@@ -229,8 +229,16 @@ model Peca {
 model Orcamento {
   id          String          @id @default(cuid())
   numero      Int             @unique @default(autoincrement())
-  clienteId   String          @map("cliente_id")
-  carroId     String          @map("carro_id")
+  // Opcionais por causa do ORÇAMENTO RÁPIDO: quem só quer saber um preço no
+  // balcão ou por telefone não precisa passar por dois cadastros antes.
+  // Vira OS só depois de identificar o cliente e o veículo.
+  clienteId   String?         @map("cliente_id")
+  carroId     String?         @map("carro_id")
+  // Identificação solta do orçamento rápido — texto livre, não cria cadastro.
+  // Serve para o atendente saber de quem era quando o cliente voltar.
+  contatoNome      String?    @map("contato_nome")
+  contatoTelefone  String?    @map("contato_telefone")
+  veiculoDescricao String?    @map("veiculo_descricao")
   data        DateTime        @default(now())
   validade    DateTime
   status      StatusOrcamento @default(RASCUNHO)
@@ -239,8 +247,8 @@ model Orcamento {
   total       Decimal         @default(0) @db.Decimal(10, 2)
   observacoes String?
 
-  cliente     Cliente         @relation(fields: [clienteId], references: [id])
-  carro       Carro           @relation(fields: [carroId], references: [id])
+  cliente     Cliente?        @relation(fields: [clienteId], references: [id])
+  carro       Carro?          @relation(fields: [carroId], references: [id])
   servicos    OrcamentoServico[]
   pecas       OrcamentoPeca[]
   ordem       OrdemServico?

@@ -5,6 +5,7 @@ import { buscarLista } from '../lib/carregar';
 import { useAuth } from '../lib/auth';
 import { useAvisos } from '../lib/avisos';
 import { brl, dataBR, LABEL_STATUS_ORCAMENTO, CORES_STATUS_ORCAMENTO } from '../lib/format';
+import { mascaraTelefone } from '../lib/mascaras';
 import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, InputDinheiro, inputCls, thCls, tdCls, VazioOuCarregando, PedirSenhaDono } from '../components/ui';
 import { DocumentoImpressao, OrcamentoDoc } from '../components/Impressao';
 
@@ -16,8 +17,12 @@ interface OrcItem {
   subtotal: number;
   desconto: number;
   total: number;
-  cliente?: { nome: string };
-  carro?: { placa: string; modelo: string };
+  // Ausentes no orçamento RÁPIDO — nele valem os campos de contato livre.
+  cliente?: { nome: string } | null;
+  carro?: { placa: string; modelo: string } | null;
+  contatoNome?: string | null;
+  contatoTelefone?: string | null;
+  veiculoDescricao?: string | null;
 }
 interface AprovarResp {
   os: { numero: number };
@@ -37,6 +42,7 @@ export default function Orcamentos() {
   const [editar, setEditar] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [identificar, setIdentificar] = useState<OrcItem | null>(null);
 
   async function carregar(termo = '') {
     setCarregando(true);
@@ -51,6 +57,10 @@ export default function Orcamentos() {
   }, []);
 
   async function aprovarRapido(o: OrcItem) {
+    // Orçamento rápido não tem dono nem veículo: a OS precisa saber em qual
+    // carro se mexeu, então o cadastro é pedido aqui, e não antes do preço.
+    if (!o.cliente) return setIdentificar(o);
+
     const ok = await avisos.confirmar({
       titulo: `Aprovar orçamento #${o.numero}`,
       mensagem: 'A Ordem de Serviço é gerada na hora e o estoque das peças é baixado.',
@@ -74,7 +84,7 @@ export default function Orcamentos() {
   async function excluir(o: OrcItem) {
     const ok = await avisos.confirmar({
       titulo: `Excluir orçamento #${o.numero}`,
-      mensagem: `O orçamento de ${o.cliente?.nome ?? 'cliente'} (${brl(o.total)}) será apagado.`,
+      mensagem: `O orçamento de ${o.cliente?.nome ?? o.contatoNome ?? 'contato não identificado'} (${brl(o.total)}) será apagado.`,
       botao: 'Excluir',
       perigo: true,
     });
@@ -120,15 +130,27 @@ export default function Orcamentos() {
                 <tr key={o.id} onClick={() => setDetalhe(o.id)} className="border-b border-fundo last:border-0 hover:bg-fundo/40 transition cursor-pointer">
                   <td className={`${tdCls} font-mono font-bold text-grafite/60`}>#{o.numero}</td>
                   <td className={`${tdCls} text-grafite/60 whitespace-nowrap`}>{dataBR(o.data)}</td>
-                  <td className={`${tdCls} font-bold`}>{o.cliente?.nome ?? '—'}</td>
+                  <td className={tdCls}>
+                    {o.cliente ? (
+                      <span className="font-bold">{o.cliente.nome}</span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold">{o.contatoNome || 'Sem identificação'}</span>
+                        <Badge cor="bg-azul-bg text-azul">Rápido</Badge>
+                        {o.contatoTelefone && <span className="text-xs text-grafite/50 w-full">{o.contatoTelefone}</span>}
+                      </span>
+                    )}
+                  </td>
                   <td className={tdCls}>
                     {o.carro ? (
                       <span>
                         <span className="font-mono text-xs bg-grafite text-white px-1.5 py-0.5 rounded">{o.carro.placa}</span>{' '}
                         <span className="text-grafite/60">{o.carro.modelo}</span>
                       </span>
+                    ) : o.veiculoDescricao ? (
+                      <span className="text-grafite/60">{o.veiculoDescricao}</span>
                     ) : (
-                      '—'
+                      <span className="text-grafite/30">sem cadastro</span>
                     )}
                   </td>
                   <td className={`${tdCls} text-right font-extrabold tabular-nums`}>{brl(o.total)}</td>
@@ -179,6 +201,17 @@ export default function Orcamentos() {
           onMudou={() => carregar(busca)}
         />
       )}
+      {identificar && (
+        <IdentificarOrcamento
+          orc={identificar}
+          onFechar={() => setIdentificar(null)}
+          onPronto={(msg) => {
+            setIdentificar(null);
+            avisos.sucesso(msg);
+            carregar(busca);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -203,8 +236,14 @@ function FormOrcamento({ orcamentoId, onFechar, onSalvo }: { orcamentoId?: strin
   const [catServ, setCatServ] = useState<ServicoOpt[]>([]);
   const [catPec, setCatPec] = useState<PecaOpt[]>([]);
 
+  // Rápido é o padrão ao criar: quem só quer um preço não deve topar com dois
+  // cadastros antes de ouvir o valor. Editar abre no modo que o orçamento já é.
+  const [modo, setModo] = useState<'RAPIDO' | 'COMPLETO'>('RAPIDO');
   const [clienteId, setClienteId] = useState('');
   const [carroId, setCarroId] = useState('');
+  const [contatoNome, setContatoNome] = useState('');
+  const [contatoTelefone, setContatoTelefone] = useState('');
+  const [veiculoDescricao, setVeiculoDescricao] = useState('');
   const [servs, setServs] = useState<LinhaServ[]>([]);
   const [pecs, setPecs] = useState<LinhaPec[]>([]);
   const [desconto, setDesconto] = useState('');
@@ -232,8 +271,12 @@ function FormOrcamento({ orcamentoId, onFechar, onSalvo }: { orcamentoId?: strin
 
       if (!orcamentoId) return;
       const o = await api<OrcFull>(`/orcamentos/${orcamentoId}`);
-      setClienteId(o.clienteId);
-      setCarroId(o.carroId);
+      setModo(o.clienteId ? 'COMPLETO' : 'RAPIDO');
+      setClienteId(o.clienteId ?? '');
+      setCarroId(o.carroId ?? '');
+      setContatoNome(o.contatoNome ?? '');
+      setContatoTelefone(o.contatoTelefone ?? '');
+      setVeiculoDescricao(o.veiculoDescricao ?? '');
       setServs(o.servicos.map((s) => ({ id: s.servicoId, nome: s.servico?.nome ?? '—', preco: s.precoUnit, quantidade: s.quantidade })));
       setPecs(
         o.pecas.map((p) => {
@@ -278,14 +321,21 @@ function FormOrcamento({ orcamentoId, onFechar, onSalvo }: { orcamentoId?: strin
 
   async function salvar(senhaDono?: string) {
     setErro('');
-    if (!clienteId) return setErro('Selecione o cliente.');
-    if (!carroId) return setErro('Selecione o veículo.');
+    if (modo === 'COMPLETO') {
+      if (!clienteId) return setErro('Selecione o cliente.');
+      if (!carroId) return setErro('Selecione o veículo.');
+    }
     if (semItens) return setErro('Adicione ao menos 1 serviço ou peça.');
     setSalvando(true);
     try {
+      const completo = modo === 'COMPLETO';
       const corpo = {
-        clienteId,
-        carroId,
+        // Um modo ou outro — mandar os dois deixaria o orçamento em cima do muro.
+        clienteId: completo ? clienteId : undefined,
+        carroId: completo ? carroId : undefined,
+        contatoNome: completo ? undefined : contatoNome,
+        contatoTelefone: completo ? undefined : contatoTelefone,
+        veiculoDescricao: completo ? undefined : veiculoDescricao,
         validadeDias: Number(validadeDias) || 15,
         desconto: descNum,
         observacoes,
@@ -333,31 +383,78 @@ function FormOrcamento({ orcamentoId, onFechar, onSalvo }: { orcamentoId?: strin
         </>
       }
     >
-      <div className="grid grid-cols-2 gap-3">
-        <Campo label="Cliente">
-          <select
-            value={clienteId}
-            onChange={(e) => {
-              setClienteId(e.target.value);
-              setCarroId('');
-            }}
-            className={inputCls}
+      {/* As duas formas de orçar. Trocar de aba não perde os itens já montados. */}
+      <div className="flex items-center gap-1 bg-fundo rounded-xl p-1">
+        {(
+          [
+            { key: 'RAPIDO', titulo: 'Rápido', ajuda: 'Só o preço, sem cadastro' },
+            { key: 'COMPLETO', titulo: 'Completo', ajuda: 'Cliente e veículo cadastrados' },
+          ] as const
+        ).map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            onClick={() => setModo(m.key)}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-bold transition ${
+              modo === m.key ? 'bg-white text-petroleo shadow-sm' : 'text-grafite/50 hover:text-grafite'
+            }`}
           >
-            <option value="">Selecione...</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>{c.nome}</option>
-            ))}
-          </select>
-        </Campo>
-        <Campo label="Veículo">
-          <select value={carroId} onChange={(e) => setCarroId(e.target.value)} disabled={!clienteId} className={inputCls}>
-            <option value="">{clienteId ? (carrosDoCliente.length ? 'Selecione...' : 'Cliente sem veículo') : 'Escolha o cliente'}</option>
-            {carrosDoCliente.map((c) => (
-              <option key={c.id} value={c.id}>{c.placa} — {c.marca} {c.modelo}</option>
-            ))}
-          </select>
-        </Campo>
+            {m.titulo}
+            <span className="block text-[10px] font-semibold opacity-60">{m.ajuda}</span>
+          </button>
+        ))}
       </div>
+
+      {modo === 'COMPLETO' ? (
+        <div className="grid grid-cols-2 gap-3">
+          <Campo label="Cliente">
+            <select
+              value={clienteId}
+              onChange={(e) => {
+                setClienteId(e.target.value);
+                setCarroId('');
+              }}
+              className={inputCls}
+            >
+              <option value="">Selecione...</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+          </Campo>
+          <Campo label="Veículo">
+            <select value={carroId} onChange={(e) => setCarroId(e.target.value)} disabled={!clienteId} className={inputCls}>
+              <option value="">{clienteId ? (carrosDoCliente.length ? 'Selecione...' : 'Cliente sem veículo') : 'Escolha o cliente'}</option>
+              {carrosDoCliente.map((c) => (
+                <option key={c.id} value={c.id}>{c.placa} — {c.marca} {c.modelo}</option>
+              ))}
+            </select>
+          </Campo>
+        </div>
+      ) : (
+        <div>
+          <div className="grid grid-cols-3 gap-3">
+            <Campo label="Nome (opcional)">
+              <input value={contatoNome} onChange={(e) => setContatoNome(e.target.value)} placeholder="Quem perguntou" className={inputCls} />
+            </Campo>
+            <Campo label="Telefone (opcional)">
+              <input
+                value={contatoTelefone}
+                onChange={(e) => setContatoTelefone(mascaraTelefone(e.target.value))}
+                placeholder="Para retornar"
+                className={inputCls}
+              />
+            </Campo>
+            <Campo label="Veículo (opcional)">
+              <input value={veiculoDescricao} onChange={(e) => setVeiculoDescricao(e.target.value)} placeholder="Ex: Gol 2015" className={inputCls} />
+            </Campo>
+          </div>
+          <p className="text-xs text-grafite/50 mt-1.5">
+            Nada aqui é obrigatório — serve só para você saber de quem era se o cliente voltar.
+            Vira orçamento completo, ou Ordem de Serviço, quando o carro chegar.
+          </p>
+        </div>
+      )}
 
       {/* Serviços */}
       <div>
@@ -487,10 +584,10 @@ function ListaItens({ linhas, vazio, textoVazio }: { linhas: LinhaUI[]; vazio: b
 interface OrcFull extends OrcItem {
   observacoes: string | null;
   validade: string;
-  clienteId: string;
-  carroId: string;
-  cliente?: { nome: string; telefone?: string | null; cpfCnpj?: string | null };
-  carro?: { placa: string; modelo: string; marca?: string; ano?: number | null; kmAtual?: number | null };
+  clienteId: string | null;
+  carroId: string | null;
+  cliente?: { nome: string; telefone?: string | null; cpfCnpj?: string | null } | null;
+  carro?: { placa: string; modelo: string; marca?: string; ano?: number | null; kmAtual?: number | null } | null;
   servicos: { id: string; servicoId: string; quantidade: number; precoUnit: number; servico?: { nome: string } }[];
   pecas: { id: string; pecaId: string; quantidade: number; precoUnit: number; peca?: { nome: string } }[];
 }
@@ -524,14 +621,21 @@ function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () 
     }
   }
 
-  const aprovar = () =>
-    acao(async () => {
+  const aprovar = () => {
+    // O rápido precisa de cadastro antes da OS. A tela de lista tem o diálogo
+    // que faz isso, então manda o atendente para lá em vez de mostrar um erro.
+    if (orc && !orc.cliente) {
+      avisos.info('Orçamento rápido: use "Aprovar → OS" na lista para informar o cliente e o veículo.');
+      return onFechar();
+    }
+    return acao(async () => {
       const r = await api<AprovarResp>(`/orcamentos/${id}/aprovar`, { method: 'POST', body: { mecanicoId } });
       if (r.aguardandoPeca) avisos.info(`OS #${r.os.numero} gerada — aguardando peça (estoque insuficiente).`);
       else avisos.sucesso(`OS #${r.os.numero} gerada!`);
       onMudou();
       onFechar();
     });
+  };
   const mudarStatus = (status: string) =>
     acao(async () => {
       await api(`/orcamentos/${id}/status`, { method: 'PATCH', body: { status } });
@@ -571,10 +675,19 @@ function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () 
             <span className="text-sm text-grafite/60">{dataBR(orc.data)} · vale até {dataBR(orc.validade)}</span>
           </div>
           <div className="bg-fundo rounded-xl p-3 text-sm">
-            <div className="font-bold text-petroleo">{orc.cliente?.nome}</div>
-            {orc.carro && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-petroleo">
+                {orc.cliente?.nome ?? orc.contatoNome ?? 'Sem identificação'}
+              </span>
+              {!orc.cliente && <Badge cor="bg-azul-bg text-azul">Rápido</Badge>}
+            </div>
+            {orc.carro ? (
               <div className="text-grafite/60">
                 <span className="font-mono text-xs bg-grafite text-white px-1.5 py-0.5 rounded">{orc.carro.placa}</span> {orc.carro.marca} {orc.carro.modelo}
+              </div>
+            ) : (
+              <div className="text-grafite/60">
+                {[orc.contatoTelefone, orc.veiculoDescricao].filter(Boolean).join(' · ') || 'sem cliente e veículo cadastrados'}
               </div>
             )}
           </div>
@@ -639,5 +752,116 @@ function ItensLeitura({ linhas }: { linhas: { nome: string; q: number; preco: nu
         </div>
       ))}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// Identificar um orçamento rápido: dá a ele um cliente e um veículo.
+//
+// Aparece quando o cliente do "só queria saber o preço" resolveu fazer o
+// serviço. É aqui — e só aqui — que o cadastro deixa de ser opcional, porque
+// a OS baixa estoque, dá garantia e entra no histórico do carro.
+// ------------------------------------------------------------------
+function IdentificarOrcamento({
+  orc,
+  onFechar,
+  onPronto,
+}: {
+  orc: OrcItem;
+  onFechar: () => void;
+  onPronto: (mensagem: string) => void;
+}) {
+  const avisos = useAvisos();
+  const [clientes, setClientes] = useState<ClienteOpt[]>([]);
+  const [carros, setCarros] = useState<CarroOpt[]>([]);
+  const [clienteId, setClienteId] = useState('');
+  const [carroId, setCarroId] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    void buscarLista<ClienteOpt[]>('/clientes', avisos.erro, []).then(setClientes);
+    void buscarLista<CarroOpt[]>('/carros', avisos.erro, []).then(setCarros);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const carrosDoCliente = useMemo(() => carros.filter((c) => c.clienteId === clienteId), [carros, clienteId]);
+
+  async function executar(gerarOS: boolean) {
+    if (!clienteId) return setErro('Selecione o cliente.');
+    if (!carroId) return setErro('Selecione o veículo.');
+
+    setOcupado(true);
+    setErro('');
+    try {
+      if (gerarOS) {
+        const r = await api<AprovarResp>(`/orcamentos/${orc.id}/aprovar`, { method: 'POST', body: { clienteId, carroId } });
+        onPronto(
+          r.aguardandoPeca
+            ? `OS #${r.os.numero} gerada — nasce aguardando peça (estoque insuficiente).`
+            : `OS #${r.os.numero} gerada!`,
+        );
+      } else {
+        await api(`/orcamentos/${orc.id}/identificar`, { method: 'PATCH', body: { clienteId, carroId } });
+        onPronto(`Orçamento #${orc.numero} agora está no nome do cliente.`);
+      }
+    } catch (err) {
+      setErro(err instanceof ApiError ? err.message : 'Não foi possível concluir');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <Modal
+      title={`Identificar orçamento #${orc.numero}`}
+      onClose={onFechar}
+      footer={
+        <>
+          <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>
+          <BtnGhost onClick={() => void executar(false)}>Só vincular</BtnGhost>
+          <BtnPrimary onClick={() => void executar(true)} disabled={ocupado}>
+            {ocupado ? 'Aguarde...' : 'Vincular e gerar OS'}
+          </BtnPrimary>
+        </>
+      }
+    >
+      <div className="bg-azul-bg text-azul rounded-xl px-3.5 py-2.5 text-sm">
+        Este é um orçamento <b>rápido</b>
+        {orc.contatoNome && <> de <b>{orc.contatoNome}</b></>}
+        {orc.veiculoDescricao && <> ({orc.veiculoDescricao})</>}. Para virar Ordem de Serviço ele
+        precisa de um cliente e de um veículo cadastrados — os itens e o valor não mudam.
+      </div>
+
+      <Campo label="Cliente">
+        <select
+          value={clienteId}
+          onChange={(e) => {
+            setClienteId(e.target.value);
+            setCarroId('');
+          }}
+          className={inputCls}
+        >
+          <option value="">Selecione...</option>
+          {clientes.map((c) => (
+            <option key={c.id} value={c.id}>{c.nome}</option>
+          ))}
+        </select>
+      </Campo>
+      <Campo label="Veículo">
+        <select value={carroId} onChange={(e) => setCarroId(e.target.value)} disabled={!clienteId} className={inputCls}>
+          <option value="">{clienteId ? (carrosDoCliente.length ? 'Selecione...' : 'Cliente sem veículo cadastrado') : 'Escolha o cliente'}</option>
+          {carrosDoCliente.map((c) => (
+            <option key={c.id} value={c.id}>{c.placa} — {c.marca} {c.modelo}</option>
+          ))}
+        </select>
+      </Campo>
+
+      <p className="text-xs text-grafite/50">
+        Cliente ou veículo ainda sem cadastro? Cadastre em <b>Clientes</b> e <b>Carros</b>, depois volte aqui.
+      </p>
+
+      {erro && <div className="text-vermelho text-sm font-semibold">{erro}</div>}
+    </Modal>
   );
 }

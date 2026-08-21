@@ -57,7 +57,7 @@ function Cabecalho({ titulo, numero, data, validade }: { titulo: string; numero:
   );
 }
 
-function Partes({ cliente, carro }: { cliente: ClienteDoc; carro?: CarroDoc | null }) {
+function Partes({ cliente, carro, veiculoLivre }: { cliente: ClienteDoc; carro?: CarroDoc | null; veiculoLivre?: string | null }) {
   return (
     <div className="grid grid-cols-2 gap-6 mb-5 text-sm">
       <div>
@@ -66,6 +66,13 @@ function Partes({ cliente, carro }: { cliente: ClienteDoc; carro?: CarroDoc | nu
         {cliente.telefone && <div className="text-grafite/70">{cliente.telefone}</div>}
         {cliente.cpfCnpj && <div className="text-grafite/70">{cliente.cpfCnpj}</div>}
       </div>
+      {!carro && veiculoLivre && (
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-grafite/40 mb-1">Veículo</div>
+          <div className="font-bold">{veiculoLivre}</div>
+          <div className="text-grafite/70 text-xs">não cadastrado</div>
+        </div>
+      )}
       {carro && (
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wide text-grafite/40 mb-1">Veículo</div>
@@ -139,8 +146,12 @@ interface OrcDoc {
   desconto: number;
   total: number;
   observacoes?: string | null;
-  cliente?: ClienteDoc;
+  cliente?: ClienteDoc | null;
   carro?: CarroDoc | null;
+  // Orçamento rápido: identificação solta, sem cadastro.
+  contatoNome?: string | null;
+  contatoTelefone?: string | null;
+  veiculoDescricao?: string | null;
   servicos: { quantidade: number; precoUnit: number; servico?: { nome: string } }[];
   pecas: { quantidade: number; precoUnit: number; peca?: { nome: string } }[];
 }
@@ -148,7 +159,11 @@ export function OrcamentoDoc({ orc }: { orc: OrcDoc }) {
   return (
     <>
       <Cabecalho titulo="ORÇAMENTO" numero={orc.numero} data={dataBR(orc.data)} validade={dataBR(orc.validade)} />
-      <Partes cliente={orc.cliente ?? { nome: '—' }} carro={orc.carro} />
+      <Partes
+        cliente={orc.cliente ?? { nome: orc.contatoNome || 'Consumidor', telefone: orc.contatoTelefone }}
+        carro={orc.carro}
+        veiculoLivre={orc.veiculoDescricao}
+      />
       <TabelaItens titulo="Serviços (mão de obra)" itens={itensDe(orc.servicos)} />
       <TabelaItens titulo="Peças" itens={itensDe(orc.pecas)} />
       <Totais subtotal={orc.subtotal} desconto={orc.desconto} total={orc.total} />
@@ -167,7 +182,7 @@ interface OSDocData {
   total: number;
   pago: boolean;
   formaPagamento?: string | null;
-  cliente?: ClienteDoc;
+  cliente?: ClienteDoc | null;
   carro?: CarroDoc | null;
   mecanico?: { nome: string } | null;
   servicos: { quantidade: number; precoUnit: number; servico?: { nome: string } }[];
