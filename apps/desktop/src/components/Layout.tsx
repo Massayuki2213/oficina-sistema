@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { BuscaPlaca } from './BuscaPlaca';
 import { iniciais, LABEL_PERFIL } from '../lib/format';
 
 type Item = { to: string; label: string; icon: LucideIcon; financeiro?: boolean; dono?: boolean };
@@ -112,9 +113,8 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       {/* Topbar */}
       <header className="col-start-2 bg-white border-b border-linha flex items-center px-6 shadow-sm z-10">
-        <div className="text-sm text-grafite/60">
-          Bem-vindo, <span className="font-semibold text-grafite">{usuario?.nome}</span>
-        </div>
+        <BuscaPlaca />
+
         <div className="ml-auto flex items-center gap-4">
           <div className="flex items-center gap-3 pl-4 border-l border-linha">
             <div className="w-9 h-9 rounded-full bg-petroleo text-white grid place-items-center font-bold text-sm">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, StickyNote, X } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
+import { buscarLista } from '../lib/carregar';
 import { useAvisos } from '../lib/avisos';
 import { horaBR, diaLongoBR, LABEL_TIPO_VISITA, LABEL_STATUS_VISITA, CORES_STATUS_VISITA } from '../lib/format';
 import { PageHeader, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, inputCls } from '../components/ui';
@@ -249,8 +250,8 @@ function NovoAgendamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo:
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    api<ClienteOpt[]>('/clientes').then(setClientes).catch(() => {});
-    api<CarroOpt[]>('/carros').then(setCarros).catch(() => {});
+    void buscarLista<ClienteOpt[]>('/clientes', avisos.erro, []).then(setClientes);
+    void buscarLista<CarroOpt[]>('/carros', avisos.erro, []).then(setCarros);
   }, []);
 
   const carrosDoCliente = useMemo(() => carros.filter((c) => c.clienteId === form.clienteId), [carros, form.clienteId]);

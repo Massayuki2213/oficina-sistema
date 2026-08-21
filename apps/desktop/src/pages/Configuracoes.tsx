@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { KeyRound, HardDriveDownload, UserPlus, ShieldCheck, CircleSlash2, AlertTriangle, Store, ImagePlus, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
+import { buscarLista } from '../lib/carregar';
 import { useAuth, type Perfil } from '../lib/auth';
 import { useAvisos } from '../lib/avisos';
 import { dataBR, LABEL_PERFIL } from '../lib/format';
@@ -362,7 +363,7 @@ function Backup() {
   const [status, setStatus] = useState<StatusBackup | null>(null);
   const [gerando, setGerando] = useState(false);
 
-  const carregar = () => api<StatusBackup>('/backup').then(setStatus).catch(() => {});
+  const carregar = () => buscarLista<StatusBackup | null>('/backup', avisos.erro, null).then(setStatus);
   useEffect(() => {
     carregar();
   }, []);

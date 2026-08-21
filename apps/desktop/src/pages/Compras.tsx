@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Truck, HandCoins, PackagePlus, Trash2, Plus } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
+import { buscarLista } from '../lib/carregar';
 import { useAuth } from '../lib/auth';
 import { useAvisos } from '../lib/avisos';
 import { brl, dataBR } from '../lib/format';
@@ -264,10 +265,11 @@ function NovaCompra({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: (num
   const [itens, setItens] = useState<LinhaItem[]>([]);
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const avisos = useAvisos();
 
   useEffect(() => {
-    api<FornecedorOpt[]>('/fornecedores').then(setFornecedores).catch(() => {});
-    api<PecaOpt[]>('/pecas').then(setCatPec).catch(() => {});
+    void buscarLista<FornecedorOpt[]>('/fornecedores', avisos.erro, []).then(setFornecedores);
+    void buscarLista<PecaOpt[]>('/pecas', avisos.erro, []).then(setCatPec);
   }, []);
 
   function addExistente(id: string) {

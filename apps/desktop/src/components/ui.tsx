@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Search, Lock, X, Pencil, Trash2, type LucideIcon } from 'lucide-react';
+import { Search, Lock, X, Pencil, Trash2, AlertTriangle, RefreshCw, type LucideIcon } from 'lucide-react';
 import { PERIODOS, type PeriodoKey } from '../lib/periodo';
 import { centavosParaTexto, soDigitos, textoParaCentavos, valorParaCentavos } from '../lib/mascaras';
 
@@ -254,5 +254,30 @@ export function PedirSenhaDono({
         />
       </Campo>
     </Modal>
+  );
+}
+
+/**
+ * Falha ao carregar, dita na cara do usuário e com saída.
+ * Substitui o antigo `.catch(() => {})`, que deixava a tela vazia
+ * sem explicar nada — o pior estado possível no balcão.
+ */
+export function ErroAoCarregar({ mensagem, onTentar }: { mensagem: string; onTentar: () => void }) {
+  return (
+    <div className="grid place-items-center py-14 text-center">
+      <div>
+        <div className="w-14 h-14 rounded-2xl bg-vermelho-bg text-vermelho grid place-items-center mx-auto mb-3">
+          <AlertTriangle size={26} strokeWidth={2} />
+        </div>
+        <div className="font-extrabold text-petroleo">Não consegui carregar</div>
+        <p className="text-sm text-grafite/50 mt-1 max-w-sm">{mensagem}</p>
+        <button
+          onClick={onTentar}
+          className="inline-flex items-center gap-2 mt-4 bg-petroleo hover:bg-petroleo/90 text-white font-bold px-4 py-2.5 rounded-xl"
+        >
+          <RefreshCw size={15} /> Tentar de novo
+        </button>
+      </div>
+    </div>
   );
 }

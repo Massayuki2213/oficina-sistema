@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Play, Check, Printer, Banknote, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
+import { buscarLista } from '../lib/carregar';
 import { useAuth } from '../lib/auth';
 import { useAvisos } from '../lib/avisos';
 import { brl, dataBR, LABEL_STATUS_OS, CORES_STATUS_OS } from '../lib/format';
@@ -212,8 +213,10 @@ function DetalheOrdem({
   }
   useEffect(() => {
     api<OSFull>(`/ordens/${id}`).then(setOs).catch(() => setErro('Não foi possível carregar'));
-    api<MecanicoOpt[]>('/auth/usuarios?perfil=MECANICO').then(setMecanicos).catch(() => {});
-    api<SituacaoGarantia>(`/ordens/${id}/garantia`).then(setGarantia).catch(() => {});
+    void buscarLista<MecanicoOpt[]>('/auth/usuarios?perfil=MECANICO', avisos.erro, []).then(setMecanicos);
+    // Silêncio proposital: se falhar, o botão de garantia apenas não aparece.
+    // Um toast aqui apareceria toda vez que alguém abre uma OS — barulho sem ação.
+    api<SituacaoGarantia>(`/ordens/${id}/garantia`).then(setGarantia).catch(() => setGarantia(null));
   }, [id]);
 
   async function acao(fn: () => Promise<void>) {

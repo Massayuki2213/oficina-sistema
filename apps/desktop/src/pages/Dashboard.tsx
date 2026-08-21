@@ -1,9 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { ClipboardList, Wallet, Package, FileText, AlertTriangle, Car, Lock, CheckCircle2, PhoneCall, HandCoins, type LucideIcon } from 'lucide-react';
-import { api } from '../lib/api';
+import { useRecurso } from '../lib/carregar';
 import { useAuth } from '../lib/auth';
 import { brl, LABEL_STATUS_OS } from '../lib/format';
 import { Link } from 'react-router-dom';
+import { ErroAoCarregar } from '../components/ui';
 
 interface OS {
   id: string;
@@ -34,6 +35,11 @@ interface FiadoAtraso {
   parcelas: number;
   diasAtraso: number;
 }
+interface Caixa {
+  entradas: number;
+  saidas: number;
+  saldo: number;
+}
 interface Alertas {
   revisaoVencida: RevisaoVencida[];
   fiadoEmAtraso: FiadoAtraso[];
@@ -63,21 +69,36 @@ function Card({ icon: Icon, label, valor, sub, cor }: { icon: LucideIcon; label:
 
 export default function Dashboard() {
   const { podeVerFinanceiro } = useAuth();
-  const [ordens, setOrdens] = useState<OS[]>([]);
-  const [pecas, setPecas] = useState<Peca[]>([]);
-  const [caixa, setCaixa] = useState<{ entradas: number; saidas: number; saldo: number } | null>(null);
-  const [alertas, setAlertas] = useState<Alertas | null>(null);
+  const rOrdens = useRecurso<OS[]>('/ordens', []);
+  const rPecas = useRecurso<Peca[]>('/pecas', []);
+  const rAlertas = useRecurso<Alertas | null>('/alertas', null);
+  const rCaixa = useRecurso<Caixa | null>(podeVerFinanceiro ? '/caixa/resumo' : null, null, [podeVerFinanceiro]);
 
-  useEffect(() => {
-    api<OS[]>('/ordens').then(setOrdens).catch(() => {});
-    api<Peca[]>('/pecas').then(setPecas).catch(() => {});
-    api<Alertas>('/alertas').then(setAlertas).catch(() => {});
-    if (podeVerFinanceiro) api('/caixa/resumo').then(setCaixa).catch(() => {});
-  }, [podeVerFinanceiro]);
+  const ordens = rOrdens.dados;
+  const pecas = rPecas.dados;
+  const alertas = rAlertas.dados;
+  const caixa = rCaixa.dados;
+
+  // O painel do dia é a primeira tela que o atendente vê: se ele abrir vazio
+  // por falha de rede, a leitura é "meus dados sumiram". Melhor dizer a verdade.
+  const painel = [rOrdens, rPecas, rAlertas, rCaixa];
+  const erro = painel.find((r) => r.erro)?.erro;
+  const recarregarTudo = () => painel.forEach((r) => void r.recarregar());
 
   const abertas = ordens.filter((o) => !['ENTREGUE', 'CANCELADA'].includes(o.status));
   const baixos = pecas.filter((p) => p.estoqueBaixo);
   const emAndamento = ordens.filter((o) => ['ABERTA', 'EM_EXECUCAO', 'AGUARDANDO_PECA', 'CONCLUIDA'].includes(o.status));
+
+  if (erro) {
+    return (
+      <div>
+        <div className="mb-6">
+          <h1 className="text-2xl font-extrabold text-petroleo">Painel do dia</h1>
+        </div>
+        <ErroAoCarregar mensagem={erro} onTentar={recarregarTudo} />
+      </div>
+    );
+  }
 
   return (
     <div>

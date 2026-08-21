@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Zap, Printer, StickyNote } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
+import { buscarLista } from '../lib/carregar';
 import { useAuth } from '../lib/auth';
 import { useAvisos } from '../lib/avisos';
 import { brl, dataBR, LABEL_STATUS_ORCAMENTO, CORES_STATUS_ORCAMENTO } from '../lib/format';
@@ -506,7 +507,7 @@ function DetalheOrcamento({ id, onFechar, onMudou }: { id: string; onFechar: () 
 
   useEffect(() => {
     api<OrcFull>(`/orcamentos/${id}`).then(setOrc).catch(() => setErro('Não foi possível carregar'));
-    api<MecanicoOpt[]>('/auth/usuarios?perfil=MECANICO').then(setMecanicos).catch(() => {});
+    void buscarLista<MecanicoOpt[]>('/auth/usuarios?perfil=MECANICO', avisos.erro, []).then(setMecanicos);
   }, [id]);
 
   const aprovavel = orc && !FINALIZADOS.includes(orc.status);

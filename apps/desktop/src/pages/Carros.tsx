@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { buscarLista } from '../lib/carregar';
 import { useAuth } from '../lib/auth';
 import { useAvisos } from '../lib/avisos';
 import { mascaraPlaca } from '../lib/mascaras';
@@ -139,10 +140,11 @@ function FormCarro({ carro, onFechar, onSalvo }: { carro: Carro | null; onFechar
   });
   const [erros, setErros] = useState<Record<string, string[]>>({});
   const [salvando, setSalvando] = useState(false);
+  const avisos = useAvisos();
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    api<ClienteOpt[]>('/clientes').then(setClientes).catch(() => {});
+    void buscarLista<ClienteOpt[]>('/clientes', avisos.erro, []).then(setClientes);
   }, []);
 
   async function salvar() {

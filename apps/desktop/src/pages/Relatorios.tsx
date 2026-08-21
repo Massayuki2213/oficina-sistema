@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Banknote, TrendingDown, TrendingUp, Ticket, Wrench, Package, Trophy, Wallet, BarChart3, type LucideIcon } from 'lucide-react';
-import { api } from '../lib/api';
+import { useRecurso } from '../lib/carregar';
 import { useAuth } from '../lib/auth';
 import { brl, LABEL_ORIGEM } from '../lib/format';
 import { queryPeriodo, type PeriodoKey } from '../lib/periodo';
-import { PageHeader, Painel, Kpi, Periodo, Restrito } from '../components/ui';
+import { PageHeader, Painel, Kpi, Periodo, Restrito, ErroAoCarregar } from '../components/ui';
 
 interface Resumo {
   faturamento: number;
@@ -61,19 +61,33 @@ function PainelLista({ titulo, icon: Icon, children, vazio }: { titulo: string; 
 export default function Relatorios() {
   const { podeVerFinanceiro } = useAuth();
   const [periodo, setPeriodo] = useState<PeriodoKey>('mes');
-  const [resumo, setResumo] = useState<Resumo | null>(null);
-  const [rank, setRank] = useState<Rankings | null>(null);
-  const [cat, setCat] = useState<PorCategoria | null>(null);
+  const q = queryPeriodo(periodo);
+  const ativo = podeVerFinanceiro;
 
-  useEffect(() => {
-    if (!podeVerFinanceiro) return;
-    const q = queryPeriodo(periodo);
-    api<Resumo>(`/relatorios/resumo${q}`).then(setResumo).catch(() => {});
-    api<Rankings>(`/relatorios/rankings${q}`).then(setRank).catch(() => {});
-    api<PorCategoria>(`/relatorios/por-categoria${q}`).then(setCat).catch(() => {});
-  }, [periodo, podeVerFinanceiro]);
+  const rResumo = useRecurso<Resumo | null>(ativo ? `/relatorios/resumo${q}` : null, null);
+  const rRank = useRecurso<Rankings | null>(ativo ? `/relatorios/rankings${q}` : null, null);
+  const rCat = useRecurso<PorCategoria | null>(ativo ? `/relatorios/por-categoria${q}` : null, null);
+
+  const resumo = rResumo.dados;
+  const rank = rRank.dados;
+  const cat = rCat.dados;
 
   if (!podeVerFinanceiro) return <Restrito>Os relatórios são exclusivos do Dono.</Restrito>;
+
+  // Relatório errado é pior que relatório nenhum: se uma parte falhou, o Dono
+  // veria zeros e concluiria que não faturou nada no período.
+  const erro = [rResumo, rRank, rCat].find((r) => r.erro)?.erro;
+  if (erro) {
+    return (
+      <div>
+        <PageHeader title="Relatórios" />
+        <ErroAoCarregar
+          mensagem={erro}
+          onTentar={() => [rResumo, rRank, rCat].forEach((r) => void r.recarregar())}
+        />
+      </div>
+    );
+  }
 
   const maxServ = Math.max(1, ...(rank?.servicosMaisVendidos.map((s) => s.quantidade) ?? []));
   const maxPec = Math.max(1, ...(rank?.pecasMaisUsadas.map((p) => p.quantidade) ?? []));
