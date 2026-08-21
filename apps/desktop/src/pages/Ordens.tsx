@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Play, Check, Printer, Banknote, CheckCircle2 } from 'lucide-react';
+import { Play, Check, Printer, Banknote, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useAvisos } from '../lib/avisos';
@@ -153,6 +153,13 @@ interface OSFull extends OSItem {
   orcamentoId: string | null;
 }
 interface MecanicoOpt { id: string; nome: string }
+interface SituacaoGarantia {
+  elegivel: boolean;
+  ehGarantia: boolean;
+  garantiaAte: string;
+  diasRestantes: number;
+  garantiasAbertas: { id: string; numero: number }[];
+}
 
 function DetalheOrdem({
   id,
@@ -173,6 +180,30 @@ function DetalheOrdem({
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
   const [imprimir, setImprimir] = useState(false);
+  const [garantia, setGarantia] = useState<SituacaoGarantia | null>(null);
+
+  // RN-18: refaz o serviço sem cobrar, dentro do prazo de garantia.
+  async function abrirGarantia() {
+    if (!os || !garantia) return;
+    const ok = await avisos.confirmar({
+      titulo: `Abrir garantia da OS #${os.numero}`,
+      mensagem: `Uma nova OS será aberta sem cobrança, copiando os serviços de mão de obra. Restam ${garantia.diasRestantes} dia(s) de garantia. Peças usadas devem ser lançadas normalmente.`,
+      botao: 'Abrir OS de garantia',
+    });
+    if (!ok) return;
+
+    setOcupado(true);
+    try {
+      const r = await api<{ os: { numero: number } }>(`/ordens/${os.id}/garantia`, { method: 'POST', body: {} });
+      avisos.sucesso(`OS de garantia #${r.os.numero} aberta, sem cobrança.`);
+      onMudou();
+      onFechar();
+    } catch (err) {
+      avisos.erro(err instanceof ApiError ? err.message : 'Erro ao abrir a garantia');
+    } finally {
+      setOcupado(false);
+    }
+  }
 
   async function recarregar() {
     const fresca = await api<OSFull>(`/ordens/${id}`);
@@ -182,6 +213,7 @@ function DetalheOrdem({
   useEffect(() => {
     api<OSFull>(`/ordens/${id}`).then(setOs).catch(() => setErro('Não foi possível carregar'));
     api<MecanicoOpt[]>('/auth/usuarios?perfil=MECANICO').then(setMecanicos).catch(() => {});
+    api<SituacaoGarantia>(`/ordens/${id}/garantia`).then(setGarantia).catch(() => {});
   }, [id]);
 
   async function acao(fn: () => Promise<void>) {
@@ -230,6 +262,11 @@ function DetalheOrdem({
           {os && ACOES[os.status]?.map((a) => (
             <BtnGhost key={a.status} onClick={() => mudarStatus(a.status)}>{a.label}</BtnGhost>
           ))}
+          {garantia?.elegivel && podeReceber && (
+            <BtnGhost onClick={abrirGarantia}>
+              <span className="inline-flex items-center gap-1.5"><ShieldCheck size={15} /> Abrir garantia</span>
+            </BtnGhost>
+          )}
           {podeCobrar ? (
             <BtnPrimary onClick={() => onReceber({ id: os!.id, numero: os!.numero, total: os!.total })} disabled={ocupado}>
               <span className="inline-flex items-center gap-1.5"><Banknote size={16} /> Receber pagamento</span>
@@ -254,7 +291,18 @@ function DetalheOrdem({
               <Badge cor="bg-amarelo-bg text-amarelo">Aguardando pagamento</Badge>
             ) : null}
             <span className="text-sm text-grafite/50">aberta {dataBR(os.dataAbertura)}</span>
+            {garantia?.ehGarantia && (
+              <Badge cor="bg-azul-bg text-azul">
+                <span className="inline-flex items-center gap-1"><ShieldCheck size={12} /> Garantia · sem cobrança</span>
+              </Badge>
+            )}
           </div>
+
+          {garantia && !garantia.ehGarantia && garantia.garantiasAbertas.length > 0 && (
+            <div className="bg-azul-bg text-azul rounded-xl px-3.5 py-2.5 text-sm font-semibold">
+              Já voltou em garantia: {garantia.garantiasAbertas.map((g) => `OS #${g.numero}`).join(', ')}
+            </div>
+          )}
 
           <div className="bg-fundo rounded-xl p-3 text-sm">
             <div className="font-bold text-petroleo">{os.cliente?.nome}</div>

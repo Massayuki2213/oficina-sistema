@@ -15,6 +15,9 @@ export const createOrcamentoSchema = z
     carroId: z.string().min(1, 'Selecione o veículo'),
     validadeDias: z.coerce.number().int().positive().default(15),
     desconto: z.coerce.number().min(0).default(0),
+    // RN-08: desconto acima do teto configurado exige a senha do Dono.
+    // Vai no corpo e nunca é gravado — a auditoria mascara este campo.
+    senhaDono: z.string().optional(),
     observacoes: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
     servicos: z.array(itemServico).default([]),
     pecas: z.array(itemPeca).default([]),

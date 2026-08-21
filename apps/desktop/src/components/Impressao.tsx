@@ -2,14 +2,7 @@ import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Printer } from 'lucide-react';
 import { brl, dataBR, LABEL_STATUS_OS, LABEL_FORMA_PAGAMENTO } from '../lib/format';
-
-// Identidade da oficina no cabeçalho do documento.
-// (Na Fase 6, isso virá da tela de Configurações.)
-const OFICINA = {
-  nome: 'OFICINA HERMES',
-  subtitulo: 'Serviços automotivos',
-  contato: '(11) 0000-0000 · Rua Example, 123 — São Paulo/SP',
-};
+import { oficinaAtual, linhaContato } from '../lib/oficina';
 
 interface ItemDoc { nome: string; quantidade: number; precoUnit: number }
 interface ClienteDoc { nome: string; telefone?: string | null; cpfCnpj?: string | null }
@@ -40,12 +33,17 @@ export function DocumentoImpressao({ onFechar, children }: { onFechar: () => voi
 }
 
 function Cabecalho({ titulo, numero, data, validade }: { titulo: string; numero: number; data: string; validade?: string }) {
+  const oficina = oficinaAtual();
+  const contato = linhaContato(oficina);
   return (
     <div className="flex items-start justify-between border-b-2 border-petroleo pb-4 mb-6">
-      <div>
-        <div className="text-2xl font-extrabold text-petroleo tracking-wide">{OFICINA.nome}</div>
-        <div className="text-xs text-grafite/60">{OFICINA.subtitulo}</div>
-        <div className="text-xs text-grafite/60">{OFICINA.contato}</div>
+      <div className="flex items-center gap-4 min-w-0">
+        {oficina.logo && <img src={oficina.logo} alt="" className="h-14 w-auto max-w-[140px] object-contain shrink-0" />}
+        <div className="min-w-0">
+          <div className="text-2xl font-extrabold text-petroleo tracking-wide">{oficina.nome}</div>
+          {oficina.subtitulo && <div className="text-xs text-grafite/60">{oficina.subtitulo}</div>}
+          {contato && <div className="text-xs text-grafite/60">{contato}</div>}
+        </div>
       </div>
       <div className="text-right">
         <div className="text-lg font-extrabold text-petroleo">{titulo}</div>

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, setToken } from './api';
+import { carregarOficina } from './oficina';
 
 export type Perfil = 'DONO' | 'ATENDENTE' | 'MECANICO';
 export interface Usuario {
@@ -25,6 +26,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return raw ? (JSON.parse(raw) as Usuario) : null;
   });
 
+  // Sessão já salva (recarregou a página): busca os dados da oficina de novo.
+  useEffect(() => {
+    if (usuario) void carregarOficina();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // A camada de API dispara este evento em respostas 401.
   useEffect(() => {
     const onLogout = () => setUsuario(null);
@@ -40,6 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(r.token);
     localStorage.setItem('hermes_user', JSON.stringify(r.usuario));
     setUsuario(r.usuario);
+    // Dados da oficina para o cabeçalho do documento impresso.
+    void carregarOficina();
   }
 
   function sair() {

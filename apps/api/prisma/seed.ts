@@ -60,6 +60,21 @@ async function main() {
     RESTART IDENTITY CASCADE;`);
   console.log('🧹 dados antigos removidos');
 
+  // ---- Configuração da oficina (cabeçalho do documento + RN-08/RN-18) ----
+  const oficina = {
+    nome: 'Oficina Hermes',
+    subtitulo: 'Serviços automotivos',
+    cnpj: '12.345.678/0001-90',
+    telefone: '(11) 3333-4444',
+    email: 'contato@hermes.local',
+    endereco: 'Rua das Oficinas, 500 — São Paulo/SP',
+    margemPadrao: 80,
+    descontoMaxSemSenha: 10,
+    garantiaDias: 15,
+  };
+  await prisma.oficina.upsert({ where: { id: 'unica' }, update: oficina, create: { id: 'unica', ...oficina } });
+  console.log(`🏪 ${oficina.nome} (desconto livre até ${oficina.descontoMaxSemSenha}%, garantia ${oficina.garantiaDias} dias)`);
+
   // ---- Fornecedores ----
   const fornSul = await prisma.fornecedor.create({
     data: { nome: 'Distribuidora Auto Sul', cnpj: '12.345.678/0001-90', contato: 'Sr. Almeida', telefone: '(11) 4002-8922', prazoEntrega: 3 },

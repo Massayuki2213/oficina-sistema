@@ -1,6 +1,8 @@
 import { prisma } from '../../lib/prisma.js';
 import { redis } from '../../lib/redis.js';
-import { AppError } from '../../lib/errors.js';
+import { AppError, COD } from '../../lib/errors.js';
+import { getOficina } from '../oficina/oficina.service.js';
+import { conferirSenhaDeDono } from '../auth/auth.service.js';
 import type { CreateOrcamentoInput, StatusOrcamentoInput } from './orcamentos.schema.js';
 
 const CACHE_KEY = 'orcamentos:list';
@@ -92,6 +94,31 @@ export async function getOrcamento(id: string) {
   return orc ? toDTO(orc) : null;
 }
 
+const pct = (parte: number, todo: number) => (todo > 0 ? (parte / todo) * 100 : 0);
+
+/**
+ * RN-08 — desconto acima do teto configurado exige a senha do Dono.
+ *
+ * A permissão `darDesconto` (checada na rota) diz QUEM pode dar desconto;
+ * esta regra diz QUANTO se pode dar sozinho. O Atendente desconta até o teto
+ * no seu crachá e, acima disso, precisa do dono ali para autorizar.
+ */
+async function validarTetoDeDesconto(subtotal: number, desconto: number, senhaDono?: string) {
+  if (desconto <= 0) return;
+
+  const { descontoMaxSemSenha } = await getOficina();
+  const percentual = pct(desconto, subtotal);
+  if (percentual <= descontoMaxSemSenha) return;
+
+  const resumo = `Desconto de ${percentual.toFixed(1)}% passa do limite de ${descontoMaxSemSenha}%`;
+  if (!senhaDono) {
+    throw new AppError(403, `${resumo}. Peça a senha do Dono para autorizar.`, COD.SENHA_DONO_NECESSARIA);
+  }
+  if (!(await conferirSenhaDeDono(senhaDono))) {
+    throw new AppError(403, 'Senha do Dono incorreta.', COD.SENHA_DONO_INCORRETA);
+  }
+}
+
 /**
  * Valida o veículo, "congela" os preços do catálogo nos itens e fecha as contas
  * (RN-09: total = mão de obra + peças − desconto). Serve para criar e para editar.
@@ -127,6 +154,8 @@ async function montarOrcamento(data: CreateOrcamentoInput) {
   });
 
   const desconto = Math.min(data.desconto, subtotal);
+  await validarTetoDeDesconto(subtotal, desconto, data.senhaDono);
+
   return {
     clienteId: data.clienteId,
     carroId: data.carroId,

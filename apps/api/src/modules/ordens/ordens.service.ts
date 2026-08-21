@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma.js';
 import { redis } from '../../lib/redis.js';
 import { AppError } from '../../lib/errors.js';
 import { situacaoFiado } from '../alertas/alertas.service.js';
+import { getOficina } from '../oficina/oficina.service.js';
 import type { ReceberInput } from './ordens.schema.js';
 
 const num = (v: unknown) => Number(v);
@@ -182,4 +183,86 @@ export async function receberPagamento(id: string, input: ReceberInput, usuarioI
 
   await redis.del('ordens:list');
   return { os: osToDTO(atualizada), aVista, parcelas: aVista ? 0 : input.parcelas };
+}
+
+/**
+ * RN-18 — abre uma OS de GARANTIA a partir de uma OS já concluída.
+ *
+ * O carro voltou dentro do prazo pelo mesmo problema: refaz o serviço sem
+ * cobrar. Decisões que valem registrar:
+ *
+ *  - total = 0 e nasce já paga. Garantia não gera receita; deixá-la "a receber"
+ *    sujaria o caixa e as contas a receber com uma dívida que não existe.
+ *  - copia só os SERVIÇOS, não as peças. Refazer a mão de obra é o compromisso
+ *    da garantia; peça nova é custo real e entra pelo fluxo normal, senão o
+ *    estoque baixa sem ninguém ver.
+ *  - guarda `osOrigemId`, para o histórico do veículo mostrar o retorno.
+ */
+export async function abrirGarantia(id: string, mecanicoId?: string) {
+  const origem = await prisma.ordemServico.findUnique({
+    where: { id },
+    include: { servicos: true, cliente: true, garantias: { select: { id: true, numero: true } } },
+  });
+  if (!origem) throw new AppError(404, 'Ordem de Serviço não encontrada');
+  if (origem.garantia) throw new AppError(400, 'Esta OS já é uma garantia. Abra a garantia pela OS original.');
+  if (!['CONCLUIDA', 'ENTREGUE'].includes(origem.status)) {
+    throw new AppError(400, 'Só cabe garantia depois que o serviço foi concluído');
+  }
+  if (origem.servicos.length === 0) {
+    throw new AppError(400, 'Esta OS não tem serviço de mão de obra para cobrir em garantia');
+  }
+
+  // O prazo conta da conclusão; se ela faltar, cai para a abertura.
+  const { garantiaDias } = await getOficina();
+  const referencia = origem.dataConclusao ?? origem.dataAbertura;
+  const limite = new Date(referencia.getTime() + garantiaDias * 24 * 60 * 60 * 1000);
+  if (new Date() > limite) {
+    throw new AppError(
+      400,
+      `A garantia de ${garantiaDias} dias venceu em ${limite.toLocaleDateString('pt-BR')}. ` +
+        'Abra uma OS normal para este atendimento.',
+    );
+  }
+
+  const criada = await prisma.ordemServico.create({
+    data: {
+      clienteId: origem.clienteId,
+      carroId: origem.carroId,
+      mecanicoId: mecanicoId ?? origem.mecanicoId,
+      osOrigemId: origem.id,
+      garantia: true,
+      status: 'ABERTA',
+      total: 0,
+      pago: true,
+      servicos: {
+        create: origem.servicos.map((s) => ({ servicoId: s.servicoId, quantidade: s.quantidade, precoUnit: 0 })),
+      },
+    },
+    include: includeFull,
+  });
+
+  await redis.del('ordens:list');
+  return { os: osToDTO(criada), origem: { id: origem.id, numero: origem.numero }, garantiaAte: limite };
+}
+
+/** Situação da garantia de uma OS — alimenta o botão da tela. */
+export async function situacaoGarantia(id: string) {
+  const os = await prisma.ordemServico.findUnique({
+    where: { id },
+    select: { id: true, status: true, garantia: true, dataAbertura: true, dataConclusao: true, garantias: { select: { id: true, numero: true } } },
+  });
+  if (!os) throw new AppError(404, 'Ordem de Serviço não encontrada');
+
+  const { garantiaDias } = await getOficina();
+  const referencia = os.dataConclusao ?? os.dataAbertura;
+  const limite = new Date(referencia.getTime() + garantiaDias * 24 * 60 * 60 * 1000);
+  const concluida = ['CONCLUIDA', 'ENTREGUE'].includes(os.status);
+
+  return {
+    elegivel: concluida && !os.garantia && new Date() <= limite,
+    ehGarantia: os.garantia,
+    garantiaAte: limite,
+    diasRestantes: Math.max(0, Math.ceil((limite.getTime() - Date.now()) / (24 * 60 * 60 * 1000))),
+    garantiasAbertas: os.garantias,
+  };
 }

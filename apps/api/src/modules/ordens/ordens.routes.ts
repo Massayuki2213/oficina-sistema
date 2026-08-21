@@ -42,6 +42,20 @@ export async function ordensRoutes(app: FastifyInstance) {
   });
 
   // POST /ordens/:id/receber — recebe o pagamento (RN-11). Mecânico não recebe.
+  // GET /ordens/:id/garantia — RN-18: dá para abrir garantia desta OS?
+  app.get('/:id/garantia', async (req) => {
+    const { id } = req.params as { id: string };
+    return service.situacaoGarantia(id);
+  });
+
+  // POST /ordens/:id/garantia — RN-18: abre a OS de garantia (sem cobrar)
+  app.post('/:id/garantia', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { mecanicoId } = (req.body ?? {}) as { mecanicoId?: string };
+    const r = await service.abrirGarantia(id, mecanicoId);
+    return reply.code(201).send(r);
+  });
+
   app.post('/:id/receber', async (req, reply) => {
     if (req.user.perfil === 'MECANICO') {
       return reply.code(403).send({ message: 'Seu perfil não pode receber pagamentos' });

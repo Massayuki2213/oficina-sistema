@@ -4,7 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useAvisos } from '../lib/avisos';
 import { brl, dataBR, LABEL_STATUS_ORCAMENTO, CORES_STATUS_ORCAMENTO } from '../lib/format';
-import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, InputDinheiro, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
+import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, InputDinheiro, inputCls, thCls, tdCls, VazioOuCarregando, PedirSenhaDono } from '../components/ui';
 import { DocumentoImpressao, OrcamentoDoc } from '../components/Impressao';
 
 interface OrcItem {
@@ -207,6 +207,8 @@ function FormOrcamento({ orcamentoId, onFechar, onSalvo }: { orcamentoId?: strin
   const [servs, setServs] = useState<LinhaServ[]>([]);
   const [pecs, setPecs] = useState<LinhaPec[]>([]);
   const [desconto, setDesconto] = useState('');
+  const [pedindoSenha, setPedindoSenha] = useState(false);
+  const [erroSenha, setErroSenha] = useState('');
   const [validadeDias, setValidadeDias] = useState('15');
   const [observacoes, setObservacoes] = useState('');
   const [erro, setErro] = useState('');
@@ -273,7 +275,7 @@ function FormOrcamento({ orcamentoId, onFechar, onSalvo }: { orcamentoId?: strin
   const total = subtotal - descNum;
   const semItens = servs.length + pecs.length === 0;
 
-  async function salvar() {
+  async function salvar(senhaDono?: string) {
     setErro('');
     if (!clienteId) return setErro('Selecione o cliente.');
     if (!carroId) return setErro('Selecione o veículo.');
@@ -286,13 +288,24 @@ function FormOrcamento({ orcamentoId, onFechar, onSalvo }: { orcamentoId?: strin
         validadeDias: Number(validadeDias) || 15,
         desconto: descNum,
         observacoes,
+        senhaDono,
         servicos: servs.map((s) => ({ servicoId: s.id, quantidade: s.quantidade })),
         pecas: pecs.map((p) => ({ pecaId: p.id, quantidade: p.quantidade })),
       };
       if (editando) await api(`/orcamentos/${orcamentoId}`, { method: 'PUT', body: corpo });
       else await api('/orcamentos', { method: 'POST', body: corpo });
+      setPedindoSenha(false);
       onSalvo(editando);
     } catch (err) {
+      // RN-08: desconto acima do teto — pede a senha do Dono e repete o envio.
+      if (err instanceof ApiError && err.codigo === 'SENHA_DONO_NECESSARIA') {
+        setPedindoSenha(true);
+        setErroSenha('');
+        return setErro('');
+      }
+      if (err instanceof ApiError && err.codigo === 'SENHA_DONO_INCORRETA') {
+        return setErroSenha(err.message);
+      }
       setErro(err instanceof ApiError ? err.message : 'Erro ao salvar');
     } finally {
       setSalvando(false);
@@ -313,7 +326,7 @@ function FormOrcamento({ orcamentoId, onFechar, onSalvo }: { orcamentoId?: strin
             <b className="text-petroleo text-base">{brl(total)}</b>
           </div>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>
-          <BtnPrimary onClick={salvar} disabled={salvando}>
+          <BtnPrimary onClick={() => salvar()} disabled={salvando}>
             {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Salvar orçamento'}
           </BtnPrimary>
         </>
@@ -412,6 +425,20 @@ function FormOrcamento({ orcamentoId, onFechar, onSalvo }: { orcamentoId?: strin
         <input value={observacoes} onChange={(e) => setObservacoes(e.target.value)} placeholder="Opcional" className={inputCls} />
       </Campo>
       {erro && <div className="text-vermelho text-sm font-semibold">{erro}</div>}
+
+      {pedindoSenha && (
+        <PedirSenhaDono
+          titulo="Desconto acima do limite"
+          mensagem={`O desconto de ${brl(descNum)} passa do que o seu perfil libera sozinho. Peça ao Dono para digitar a senha e autorizar.`}
+          erro={erroSenha}
+          ocupado={salvando}
+          onConfirmar={(senha) => void salvar(senha)}
+          onCancelar={() => {
+            setPedindoSenha(false);
+            setErroSenha('');
+          }}
+        />
+      )}
     </Modal>
   );
 }

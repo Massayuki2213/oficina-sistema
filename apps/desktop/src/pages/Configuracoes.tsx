@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { KeyRound, HardDriveDownload, UserPlus, ShieldCheck, CircleSlash2, AlertTriangle } from 'lucide-react';
+import { KeyRound, HardDriveDownload, UserPlus, ShieldCheck, CircleSlash2, AlertTriangle, Store, ImagePlus, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth, type Perfil } from '../lib/auth';
 import { useAvisos } from '../lib/avisos';
 import { dataBR, LABEL_PERFIL } from '../lib/format';
+import { carregarOficina, definirOficina, oficinaAtual, type Oficina } from '../lib/oficina';
 import { PageHeader, Painel, Badge, Modal, Campo, BtnPrimary, BtnGhost, AcaoEditar, inputCls, thCls, tdCls, VazioOuCarregando } from '../components/ui';
 
 interface UsuarioAdmin {
@@ -36,9 +37,10 @@ export default function Configuracoes() {
 
   return (
     <div>
-      <PageHeader title="Configurações" subtitle={ehDono ? 'Usuários, senha e backup' : 'Sua conta'} />
+      <PageHeader title="Configurações" subtitle={ehDono ? 'Oficina, usuários, senha e backup' : 'Sua conta'} />
       <div className="space-y-6 max-w-4xl">
         <MinhaSenha />
+        {ehDono && <DadosDaOficina />}
         {ehDono && <Usuarios meuId={usuario!.id} />}
         {ehDono && <Backup />}
       </div>
@@ -415,6 +417,139 @@ function Backup() {
           </p>
         </>
       )}
+    </Secao>
+  );
+}
+
+// ------------------------------------------------------------------
+// Dados da oficina — o que sai no cabeçalho do orçamento e da OS,
+// mais os números que as regras usam (RN-08 desconto, RN-18 garantia).
+// ------------------------------------------------------------------
+const LIMITE_LOGO_KB = 300;
+
+function DadosDaOficina() {
+  const avisos = useAvisos();
+  const [form, setForm] = useState<Oficina>(oficinaAtual());
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [erros, setErros] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    void carregarOficina().then((o) => {
+      setForm(o);
+      setCarregando(false);
+    });
+  }, []);
+
+  const set = (k: keyof Oficina, v: string | number | null) => setForm((f) => ({ ...f, [k]: v }));
+
+  function escolherLogo(arquivo: File) {
+    if (arquivo.size > LIMITE_LOGO_KB * 1024) {
+      return avisos.erro(`Logo muito grande (máx. ${LIMITE_LOGO_KB} KB). Reduza a imagem e tente de novo.`);
+    }
+    const leitor = new FileReader();
+    leitor.onload = () => set('logo', String(leitor.result));
+    leitor.onerror = () => avisos.erro('Não consegui ler o arquivo do logo.');
+    leitor.readAsDataURL(arquivo);
+  }
+
+  async function salvar() {
+    setSalvando(true);
+    setErros({});
+    try {
+      const salvo = await api<Oficina>('/oficina', { method: 'PUT', body: form });
+      definirOficina(salvo);
+      setForm(salvo);
+      avisos.sucesso('Dados da oficina salvos. Já valem no próximo documento impresso.');
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErros(err.erros ?? {});
+        if (!err.erros) avisos.erro(err.message);
+      }
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Secao
+      titulo="Dados da oficina"
+      descricao="Aparecem no orçamento e na OS que você entrega ao cliente."
+      icone={Store}
+      acao={<BtnPrimary onClick={salvar} disabled={salvando || carregando}>{salvando ? 'Salvando...' : 'Salvar'}</BtnPrimary>}
+    >
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Campo label="Nome da oficina" erro={erros.nome?.[0]}>
+          <input className={inputCls} value={form.nome} onChange={(e) => set('nome', e.target.value)} />
+        </Campo>
+        <Campo label="Descrição curta">
+          <input className={inputCls} placeholder="Serviços automotivos" value={form.subtitulo ?? ''} onChange={(e) => set('subtitulo', e.target.value)} />
+        </Campo>
+        <Campo label="CNPJ">
+          <input className={inputCls} value={form.cnpj ?? ''} onChange={(e) => set('cnpj', e.target.value)} />
+        </Campo>
+        <Campo label="Telefone">
+          <input className={inputCls} value={form.telefone ?? ''} onChange={(e) => set('telefone', e.target.value)} />
+        </Campo>
+        <Campo label="E-mail">
+          <input className={inputCls} value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} />
+        </Campo>
+        <Campo label="Endereço">
+          <input className={inputCls} value={form.endereco ?? ''} onChange={(e) => set('endereco', e.target.value)} />
+        </Campo>
+      </div>
+
+      <div className="mt-4">
+        <div className="text-[13px] font-bold text-grafite/60 mb-1.5">Logo no documento impresso</div>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="w-28 h-16 rounded-xl border border-linha bg-fundo grid place-items-center overflow-hidden shrink-0">
+            {form.logo ? (
+              <img src={form.logo} alt="Logo" className="max-h-full max-w-full object-contain" />
+            ) : (
+              <ImagePlus size={22} className="text-grafite/30" />
+            )}
+          </div>
+          <label className="cursor-pointer text-sm font-bold text-azul hover:underline">
+            Escolher imagem
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) escolherLogo(f);
+                e.target.value = '';
+              }}
+            />
+          </label>
+          {form.logo && (
+            <button onClick={() => set('logo', null)} className="inline-flex items-center gap-1.5 text-sm font-bold text-vermelho hover:underline">
+              <Trash2 size={14} /> Remover
+            </button>
+          )}
+          <span className="text-xs text-grafite/40">PNG ou JPG, até {LIMITE_LOGO_KB} KB.</span>
+        </div>
+        {erros.logo?.[0] && <div className="text-xs text-vermelho mt-1.5 font-semibold">{erros.logo[0]}</div>}
+      </div>
+
+      <div className="border-t border-linha mt-5 pt-5">
+        <div className="text-[13px] font-bold text-grafite/60 mb-3">Regras do negócio</div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          <Campo label="Margem padrão (%)" erro={erros.margemPadrao?.[0]}>
+            <input type="number" min={0} className={inputCls} value={form.margemPadrao} onChange={(e) => set('margemPadrao', Number(e.target.value))} />
+          </Campo>
+          <Campo label="Desconto sem senha (%)" erro={erros.descontoMaxSemSenha?.[0]}>
+            <input type="number" min={0} max={100} className={inputCls} value={form.descontoMaxSemSenha} onChange={(e) => set('descontoMaxSemSenha', Number(e.target.value))} />
+          </Campo>
+          <Campo label="Garantia (dias)" erro={erros.garantiaDias?.[0]}>
+            <input type="number" min={0} className={inputCls} value={form.garantiaDias} onChange={(e) => set('garantiaDias', Number(e.target.value))} />
+          </Campo>
+        </div>
+        <p className="text-xs text-grafite/50 mt-2.5">
+          Acima do limite de desconto, o orçamento passa a exigir a senha do Dono. A garantia define
+          por quantos dias o serviço pode voltar sem cobrança.
+        </p>
+      </div>
     </Secao>
   );
 }

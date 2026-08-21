@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Search, Lock, X, Pencil, Trash2, type LucideIcon } from 'lucide-react';
 import { PERIODOS, type PeriodoKey } from '../lib/periodo';
 import { centavosParaTexto, soDigitos, textoParaCentavos, valorParaCentavos } from '../lib/mascaras';
@@ -203,5 +203,56 @@ export function Restrito({ children }: { children?: ReactNode }) {
         <p className="text-grafite/50 mt-1 text-sm">{children ?? 'Esta área é exclusiva do Dono.'}</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Pede a senha do Dono para autorizar uma ação (RN-08).
+ * Fica aqui, e não em avisos.tsx, porque `confirmar()` devolve sim/não —
+ * este precisa devolver um valor digitado.
+ */
+export function PedirSenhaDono({
+  titulo,
+  mensagem,
+  erro,
+  ocupado,
+  onConfirmar,
+  onCancelar,
+}: {
+  titulo: string;
+  mensagem: string;
+  erro?: string;
+  ocupado?: boolean;
+  onConfirmar: (senha: string) => void;
+  onCancelar: () => void;
+}) {
+  const [senha, setSenha] = useState('');
+  return (
+    <Modal
+      title={titulo}
+      onClose={onCancelar}
+      footer={
+        <>
+          <BtnGhost onClick={onCancelar}>Cancelar</BtnGhost>
+          <BtnPrimary onClick={() => onConfirmar(senha)} disabled={ocupado || senha.length === 0}>
+            {ocupado ? 'Autorizando...' : 'Autorizar'}
+          </BtnPrimary>
+        </>
+      }
+    >
+      <p className="text-sm text-grafite/70 mb-3">{mensagem}</p>
+      <Campo label="Senha do Dono" erro={erro}>
+        <input
+          type="password"
+          autoFocus
+          className={inputCls}
+          value={senha}
+          onChange={(e) => setSenha(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && senha) onConfirmar(senha);
+          }}
+        />
+      </Campo>
+    </Modal>
   );
 }

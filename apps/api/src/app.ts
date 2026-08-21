@@ -23,6 +23,7 @@ import { fornecedoresRoutes } from './modules/fornecedores/fornecedores.routes.j
 import { comprasRoutes } from './modules/compras/compras.routes.js';
 import { auditoriaRoutes } from './modules/auditoria/auditoria.routes.js';
 import { alertasRoutes } from './modules/alertas/alertas.routes.js';
+import { oficinaRoutes } from './modules/oficina/oficina.routes.js';
 import { plugarAuditoria } from './lib/auditoria.js';
 import { AppError } from './lib/errors.js';
 
@@ -77,11 +78,15 @@ export function buildApp() {
   app.register(comprasRoutes, { prefix: '/compras' });
   app.register(auditoriaRoutes, { prefix: '/auditoria' });
   app.register(alertasRoutes, { prefix: '/alertas' });
+  app.register(oficinaRoutes, { prefix: '/oficina' });
 
   // Tratador global: converte AppError (regra de negócio) na resposta certa.
   app.setErrorHandler((error, req, reply) => {
     if (error instanceof AppError) {
-      return reply.code(error.statusCode).send({ message: error.message });
+      return reply.code(error.statusCode).send({
+        message: error.message,
+        ...(error.codigo ? { codigo: error.codigo } : {}),
+      });
     }
     req.log.error(error);
     const code = typeof error.statusCode === 'number' ? error.statusCode : 500;

@@ -17,6 +17,8 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public erros?: Record<string, string[]>,
+    /** Código de negócio, quando a API manda um (ver COD no back). */
+    public codigo?: string,
   ) {
     super(message);
   }
@@ -44,6 +46,6 @@ export async function api<T = any>(
     localStorage.removeItem('hermes_user');
     window.dispatchEvent(new Event('hermes:logout'));
   }
-  if (!res.ok) throw new ApiError(res.status, data?.message ?? 'Erro na requisição', data?.erros);
+  if (!res.ok) throw new ApiError(res.status, data?.message ?? 'Erro na requisição', data?.erros, data?.codigo);
   return data as T;
 }

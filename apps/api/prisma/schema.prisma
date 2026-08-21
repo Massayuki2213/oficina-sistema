@@ -293,8 +293,13 @@ model OrdemServico {
   formaPagamento FormaPagamento? @map("forma_pagamento")
   pago          Boolean        @default(false)
   garantia      Boolean        @default(false)
+  // RN-18: OS de garantia aponta para a OS que a originou, para o histórico
+  // do veículo mostrar "voltou pelo mesmo problema".
+  osOrigemId    String?        @map("os_origem_id")
 
   orcamento     Orcamento?     @relation(fields: [orcamentoId], references: [id])
+  osOrigem      OrdemServico?  @relation("OSGarantia", fields: [osOrigemId], references: [id])
+  garantias     OrdemServico[] @relation("OSGarantia")
   cliente       Cliente        @relation(fields: [clienteId], references: [id])
   carro         Carro          @relation(fields: [carroId], references: [id])
   mecanico      Usuario?       @relation("MecanicoResponsavel", fields: [mecanicoId], references: [id])
@@ -479,4 +484,30 @@ model LogAuditoria {
 
   @@index([data])
   @@map("logs_auditoria")
+}
+
+// ============================================================
+// Configuração da oficina — uma linha só (id fixo "unica").
+// Tira do código o que é do negócio: identidade no documento
+// impresso, margem sugerida, teto de desconto (RN-08) e prazo
+// de garantia (RN-18).
+// ============================================================
+model Oficina {
+  id                  String   @id @default("unica")
+  nome                String   @default("Minha Oficina")
+  subtitulo           String?
+  cnpj                String?
+  telefone            String?
+  email               String?
+  endereco            String?
+  // Logo em data URI (base64). Vai no cabeçalho do orçamento e da OS.
+  logo                String?
+  margemPadrao        Decimal  @default(80) @db.Decimal(5, 2) @map("margem_padrao")
+  // RN-08: acima deste percentual, o desconto exige a senha do Dono.
+  descontoMaxSemSenha Decimal  @default(10) @db.Decimal(5, 2) @map("desconto_max_sem_senha")
+  // RN-18: dias de garantia do serviço.
+  garantiaDias        Int      @default(15) @map("garantia_dias")
+  atualizadoEm        DateTime @updatedAt @map("atualizado_em")
+
+  @@map("oficina")
 }

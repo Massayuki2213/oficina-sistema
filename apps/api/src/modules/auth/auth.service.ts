@@ -29,3 +29,18 @@ export async function validarCredenciais(email: string, senha: string) {
 
   return usuario;
 }
+
+/**
+ * RN-08: confere se a senha informada é de ALGUM Dono ativo.
+ *
+ * Não pede o e-mail de propósito: no balcão, quem autoriza o desconto é o dono
+ * que está por perto, e digitar só a senha é o gesto rápido que a regra pede.
+ */
+export async function conferirSenhaDeDono(senha: string): Promise<boolean> {
+  if (!senha) return false;
+  const donos = await prisma.usuario.findMany({ where: { perfil: 'DONO', ativo: true }, select: { senhaHash: true } });
+  for (const dono of donos) {
+    if (await bcrypt.compare(senha, dono.senhaHash)) return true;
+  }
+  return false;
+}

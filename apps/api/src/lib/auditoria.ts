@@ -12,7 +12,15 @@ import { prisma } from './prisma.js';
 // ============================================================
 
 /** Campos que nunca podem entrar no log, em qualquer nível do corpo. */
-const SENSIVEIS = new Set(['senha', 'senhaatual', 'novasenha', 'confirmarsenha', 'senhahash', 'token']);
+const SENSIVEIS = new Set([
+  'senha',
+  'senhaatual',
+  'novasenha',
+  'confirmarsenha',
+  'senhahash',
+  'senhadono', // RN-08: confirmação de desconto acima do teto
+  'token',
+]);
 
 /** Rotas que não são alteração de negócio (ou que se auditam sozinhas). */
 const IGNORADAS = [/^\/auth\/login\b/, /^\/health\b/];
