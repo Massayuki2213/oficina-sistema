@@ -322,18 +322,36 @@ function ReceberPagamento({
   const [erro, setErro] = useState('');
   const parcelado = forma === 'PARCELADO' || forma === 'FIADO';
 
-  async function confirmar() {
+  async function confirmar(liberarFiado = false) {
     setSalvando(true);
     setErro('');
     try {
       const r = await api<{ aVista: boolean; parcelas: number }>(`/ordens/${os.id}/receber`, {
         method: 'POST',
-        body: { formaPagamento: forma, parcelas: Number(parcelas) || 1, primeiroVencimentoDias: Number(primeiroVenc) || 30 },
+        body: {
+          formaPagamento: forma,
+          parcelas: Number(parcelas) || 1,
+          primeiroVencimentoDias: Number(primeiroVenc) || 30,
+          liberarFiado,
+        },
       });
       if (r.aVista) avisos.sucesso(`Recebido! Entrou ${brl(os.total)} no caixa.`);
       else avisos.sucesso(`OS entregue — ${r.parcelas} parcela(s) geradas em Contas a Receber.`);
       onRecebido();
     } catch (err) {
+      // RN-11.2: 409 = cliente com fiado vencido. Não é proibição absoluta —
+      // o balcão pode assumir o risco, e a liberação fica gravada na auditoria.
+      if (err instanceof ApiError && err.status === 409) {
+        const ok = await avisos.confirmar({
+          titulo: 'Cliente com fiado em atraso',
+          mensagem: err.message,
+          botao: 'Liberar mesmo assim',
+          perigo: true,
+        });
+        setSalvando(false);
+        if (ok) return confirmar(true);
+        return;
+      }
       setErro(err instanceof ApiError ? err.message : 'Erro ao receber');
     } finally {
       setSalvando(false);
@@ -347,7 +365,7 @@ function ReceberPagamento({
       footer={
         <>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>
-          <BtnPrimary onClick={confirmar} disabled={salvando}>{salvando ? 'Recebendo...' : `Confirmar ${brl(os.total)}`}</BtnPrimary>
+          <BtnPrimary onClick={() => confirmar()} disabled={salvando}>{salvando ? 'Recebendo...' : `Confirmar ${brl(os.total)}`}</BtnPrimary>
         </>
       }
     >

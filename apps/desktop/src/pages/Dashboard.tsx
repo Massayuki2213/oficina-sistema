@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ClipboardList, Wallet, Package, FileText, AlertTriangle, Car, Lock, CheckCircle2, type LucideIcon } from 'lucide-react';
+import { ClipboardList, Wallet, Package, FileText, AlertTriangle, Car, Lock, CheckCircle2, PhoneCall, HandCoins, type LucideIcon } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { brl, LABEL_STATUS_OS } from '../lib/format';
+import { Link } from 'react-router-dom';
 
 interface OS {
   id: string;
@@ -18,6 +19,25 @@ interface Peca {
   estoqueAtual: number;
   unidade: string;
   estoqueBaixo: boolean;
+}
+
+interface RevisaoVencida {
+  carroId: string;
+  placa: string;
+  modelo: string;
+  cliente: { id: string; nome: string; telefone: string | null };
+  diasSemServico: number;
+}
+interface FiadoAtraso {
+  cliente: { id: string; nome: string; telefone: string | null };
+  valor: number;
+  parcelas: number;
+  diasAtraso: number;
+}
+interface Alertas {
+  revisaoVencida: RevisaoVencida[];
+  fiadoEmAtraso: FiadoAtraso[];
+  total: number;
 }
 
 const CORES_STATUS: Record<string, string> = {
@@ -46,10 +66,12 @@ export default function Dashboard() {
   const [ordens, setOrdens] = useState<OS[]>([]);
   const [pecas, setPecas] = useState<Peca[]>([]);
   const [caixa, setCaixa] = useState<{ entradas: number; saidas: number; saldo: number } | null>(null);
+  const [alertas, setAlertas] = useState<Alertas | null>(null);
 
   useEffect(() => {
     api<OS[]>('/ordens').then(setOrdens).catch(() => {});
     api<Peca[]>('/pecas').then(setPecas).catch(() => {});
+    api<Alertas>('/alertas').then(setAlertas).catch(() => {});
     if (podeVerFinanceiro) api('/caixa/resumo').then(setCaixa).catch(() => {});
   }, [podeVerFinanceiro]);
 
@@ -126,6 +148,116 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* RN-20 e RN-11.2: o que estava calculado no banco e ninguém via. */}
+      <div className="grid lg:grid-cols-2 gap-4 mt-4">
+        <Bloco
+          icone={PhoneCall}
+          corIcone="text-azul"
+          titulo="Oportunidades de retorno"
+          descricao="Sem passar na oficina há mais de 6 meses"
+          vazio="Nenhum cliente atrasado na revisão"
+          itens={alertas?.revisaoVencida ?? []}
+          verMais="/carros"
+          render={(c: RevisaoVencida) => (
+            <div key={c.carroId} className="flex items-center gap-3 px-3 py-3 border-b border-fundo last:border-0">
+              <div className="w-9 h-9 rounded-lg bg-azul-bg text-azul grid place-items-center shrink-0">
+                <Car size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-sm truncate">{c.cliente.nome}</div>
+                <div className="text-xs text-grafite/50">
+                  <span className="font-mono bg-grafite text-white px-1.5 py-0.5 rounded">{c.placa}</span> {c.modelo}
+                  {c.cliente.telefone && <span> · {c.cliente.telefone}</span>}
+                </div>
+              </div>
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-azul-bg text-azul whitespace-nowrap">
+                {Math.floor(c.diasSemServico / 30)} meses
+              </span>
+            </div>
+          )}
+        />
+
+        {podeVerFinanceiro && (
+          <Bloco
+            icone={HandCoins}
+            corIcone="text-vermelho"
+            titulo="Fiado em atraso"
+            descricao="Parcelas vencidas e não recebidas"
+            vazio="Ninguém devendo em atraso"
+            itens={alertas?.fiadoEmAtraso ?? []}
+            verMais="/contas-receber"
+            render={(f: FiadoAtraso) => (
+              <div key={f.cliente.id} className="flex items-center gap-3 px-3 py-3 border-b border-fundo last:border-0">
+                <div className="w-9 h-9 rounded-lg bg-vermelho-bg text-vermelho grid place-items-center shrink-0">
+                  <HandCoins size={18} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm truncate">{f.cliente.nome}</div>
+                  <div className="text-xs text-grafite/50">
+                    {f.parcelas} parcela(s) · {f.diasAtraso} dia(s) de atraso
+                  </div>
+                </div>
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-vermelho-bg text-vermelho whitespace-nowrap">
+                  {brl(f.valor)}
+                </span>
+              </div>
+            )}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Painel de alerta: cabeçalho, lista curta e atalho para a tela cheia. */
+function Bloco<T>({
+  icone: Icone,
+  corIcone,
+  titulo,
+  descricao,
+  vazio,
+  itens,
+  verMais,
+  render,
+}: {
+  icone: LucideIcon;
+  corIcone: string;
+  titulo: string;
+  descricao: string;
+  vazio: string;
+  itens: T[];
+  verMais: string;
+  render: (item: T) => ReactNode;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-linha shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-linha flex items-center gap-2">
+        <Icone size={18} className={corIcone} />
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-petroleo leading-tight">{titulo}</div>
+          <div className="text-[11px] text-grafite/50">{descricao}</div>
+        </div>
+        {itens.length > 0 && (
+          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full bg-fundo ${corIcone}`}>{itens.length}</span>
+        )}
+      </div>
+      <div className="p-2">
+        {itens.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 text-grafite/40 py-8 text-sm">
+            <CheckCircle2 size={16} className="text-verde" /> {vazio}
+          </div>
+        ) : (
+          <>
+            {itens.slice(0, 5).map(render)}
+            {itens.length > 5 && (
+              <Link to={verMais} className="block text-center text-xs font-bold text-azul py-2.5 hover:underline">
+                ver todos os {itens.length}
+              </Link>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

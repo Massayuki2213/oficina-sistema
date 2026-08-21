@@ -2,6 +2,7 @@ import type { StatusOS } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { redis } from '../../lib/redis.js';
 import { AppError } from '../../lib/errors.js';
+import { situacaoFiado } from '../alertas/alertas.service.js';
 import type { ReceberInput } from './ordens.schema.js';
 
 const num = (v: unknown) => Number(v);
@@ -121,6 +122,20 @@ export async function receberPagamento(id: string, input: ReceberInput, usuarioI
   const total = num(os.total);
   const aVista = ['A_VISTA', 'PIX', 'CARTAO'].includes(input.formaPagamento);
   const DIA = 24 * 60 * 60 * 1000;
+
+  // RN-11.2: quem já tem parcela vencida não leva mais fiado sem alguém assumir.
+  // Só vale para venda a prazo — pagamento à vista quita e nunca é barrado.
+  if (!aVista && !input.liberarFiado) {
+    const situacao = await situacaoFiado(os.clienteId);
+    if (situacao.bloqueado) {
+      throw new AppError(
+        409,
+        `${os.cliente.nome} tem ${situacao.parcelasVencidas} parcela(s) vencida(s), ` +
+          `somando ${situacao.valorVencido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. ` +
+          'Receba à vista ou libere o fiado assumindo o risco.',
+      );
+    }
+  }
 
   const atualizada = await prisma.$transaction(async (tx) => {
     if (aVista) {

@@ -240,6 +240,7 @@ function defaultDataHora() {
 }
 
 function NovoAgendamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () => void }) {
+  const avisos = useAvisos();
   const [clientes, setClientes] = useState<ClienteOpt[]>([]);
   const [carros, setCarros] = useState<CarroOpt[]>([]);
   const [form, setForm] = useState({ clienteId: '', carroId: '', dataHora: defaultDataHora(), tipo: 'REVISAO', observacoes: '' });
@@ -254,13 +255,25 @@ function NovoAgendamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo:
 
   const carrosDoCliente = useMemo(() => carros.filter((c) => c.clienteId === form.clienteId), [carros, form.clienteId]);
 
-  async function salvar() {
+  async function salvar(ignorarConflito = false) {
     setSalvando(true);
     setErros({});
     try {
-      await api('/agenda', { method: 'POST', body: form });
+      await api('/agenda', { method: 'POST', body: { ...form, ignorarConflito } });
       onSalvo();
     } catch (err) {
+      // RN-19: 409 é conflito de horário — avisa e deixa o atendente encaixar
+      // assim mesmo. A oficina às vezes marca dois carros de propósito.
+      if (err instanceof ApiError && err.status === 409) {
+        const ok = await avisos.confirmar({
+          titulo: 'Conflito de horário',
+          mensagem: err.message,
+          botao: 'Encaixar mesmo assim',
+        });
+        setSalvando(false);
+        if (ok) return salvar(true);
+        return;
+      }
       if (err instanceof ApiError) setErros(err.erros ?? { clienteId: [err.message] });
     } finally {
       setSalvando(false);
@@ -274,7 +287,7 @@ function NovoAgendamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo:
       footer={
         <>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>
-          <BtnPrimary onClick={salvar} disabled={salvando}>{salvando ? 'Salvando...' : 'Agendar'}</BtnPrimary>
+          <BtnPrimary onClick={() => salvar()} disabled={salvando}>{salvando ? 'Salvando...' : 'Agendar'}</BtnPrimary>
         </>
       }
     >

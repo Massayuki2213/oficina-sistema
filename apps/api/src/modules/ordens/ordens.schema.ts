@@ -15,5 +15,8 @@ export const receberSchema = z.object({
   formaPagamento: z.enum(['A_VISTA', 'PIX', 'CARTAO', 'PARCELADO', 'FIADO']),
   parcelas: z.coerce.number().int().min(1).max(24).default(1),
   primeiroVencimentoDias: z.coerce.number().int().min(0).default(30),
+  // RN-11.2: liberar fiado para cliente com parcela vencida é decisão consciente
+  // do balcão. Vai no corpo de propósito — assim fica gravada na auditoria.
+  liberarFiado: z.coerce.boolean().default(false),
 });
 export type ReceberInput = z.infer<typeof receberSchema>;

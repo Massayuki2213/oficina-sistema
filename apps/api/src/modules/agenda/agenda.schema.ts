@@ -10,6 +10,8 @@ export const createVisitaSchema = z.object({
   dataHora: z.string().min(1, 'Informe a data e a hora').refine(dataHoraValida, 'Data/hora inválida'),
   tipo: z.enum(['REVISAO', 'RETORNO', 'ORCAMENTO', 'GARANTIA']).default('REVISAO'),
   observacoes: opcional(z.string()),
+  // RN-19: o atendente confirmou que quer encaixar mesmo com conflito.
+  ignorarConflito: z.coerce.boolean().default(false),
 });
 export type CreateVisitaInput = z.infer<typeof createVisitaSchema>;
 
@@ -22,5 +24,6 @@ export const updateVisitaSchema = z.object({
   dataHora: z.preprocess((v) => (v === '' ? undefined : v), z.string().refine(dataHoraValida, 'Data/hora inválida').optional()),
   tipo: z.enum(['REVISAO', 'RETORNO', 'ORCAMENTO', 'GARANTIA']).optional(),
   observacoes: opcional(z.string()),
+  ignorarConflito: z.coerce.boolean().default(false),
 });
 export type UpdateVisitaInput = z.infer<typeof updateVisitaSchema>;

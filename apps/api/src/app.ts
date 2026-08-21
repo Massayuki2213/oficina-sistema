@@ -22,6 +22,7 @@ import { usuariosRoutes } from './modules/usuarios/usuarios.routes.js';
 import { fornecedoresRoutes } from './modules/fornecedores/fornecedores.routes.js';
 import { comprasRoutes } from './modules/compras/compras.routes.js';
 import { auditoriaRoutes } from './modules/auditoria/auditoria.routes.js';
+import { alertasRoutes } from './modules/alertas/alertas.routes.js';
 import { plugarAuditoria } from './lib/auditoria.js';
 import { AppError } from './lib/errors.js';
 
@@ -75,6 +76,7 @@ export function buildApp() {
   app.register(fornecedoresRoutes, { prefix: '/fornecedores' });
   app.register(comprasRoutes, { prefix: '/compras' });
   app.register(auditoriaRoutes, { prefix: '/auditoria' });
+  app.register(alertasRoutes, { prefix: '/alertas' });
 
   // Tratador global: converte AppError (regra de negócio) na resposta certa.
   app.setErrorHandler((error, req, reply) => {
