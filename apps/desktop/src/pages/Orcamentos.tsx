@@ -5,7 +5,7 @@ import { buscarLista } from '../lib/carregar';
 import { useAuth } from '../lib/auth';
 import { useAvisos } from '../lib/avisos';
 import { brl, dataBR, LABEL_STATUS_ORCAMENTO, CORES_STATUS_ORCAMENTO } from '../lib/format';
-import { mascaraTelefone } from '../lib/mascaras';
+import { mascaraPlaca, mascaraTelefone } from '../lib/mascaras';
 import { PageHeader, SearchBar, BtnPrimary, BtnGhost, Painel, Badge, Modal, Campo, AcaoEditar, AcaoExcluir, InputDinheiro, inputCls, thCls, tdCls, VazioOuCarregando, PedirSenhaDono } from '../components/ui';
 import { DocumentoImpressao, OrcamentoDoc } from '../components/Impressao';
 
@@ -779,6 +779,17 @@ function IdentificarOrcamento({
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
 
+  // Cadastro sem sair daqui. Mandar o atendente para outra tela e voltar era
+  // recriar, no fim do fluxo, a burocracia que o orçamento rápido tirou do começo.
+  const [novoCliente, setNovoCliente] = useState(false);
+  const [novoCarro, setNovoCarro] = useState(false);
+  // O que já foi digitado no orçamento rápido vira a semente do cadastro.
+  const [cNome, setCNome] = useState(orc.contatoNome ?? '');
+  const [cTelefone, setCTelefone] = useState(orc.contatoTelefone ?? '');
+  const [vPlaca, setVPlaca] = useState('');
+  const [vMarca, setVMarca] = useState('');
+  const [vModelo, setVModelo] = useState(orc.veiculoDescricao ?? '');
+
   useEffect(() => {
     void buscarLista<ClienteOpt[]>('/clientes', avisos.erro, []).then(setClientes);
     void buscarLista<CarroOpt[]>('/carros', avisos.erro, []).then(setCarros);
@@ -786,6 +797,48 @@ function IdentificarOrcamento({
   }, []);
 
   const carrosDoCliente = useMemo(() => carros.filter((c) => c.clienteId === clienteId), [carros, clienteId]);
+
+  async function cadastrarCliente() {
+    if (cNome.trim().length < 2) return setErro('Informe o nome do cliente.');
+    setOcupado(true);
+    setErro('');
+    try {
+      const novo = await api<ClienteOpt>('/clientes', {
+        method: 'POST',
+        body: { nome: cNome.trim(), telefone: cTelefone || undefined },
+      });
+      setClientes((l) => [...l, novo]);
+      setClienteId(novo.id);
+      setNovoCliente(false);
+      // Sem veículo cadastrado ainda: já abre o próximo passo.
+      setNovoCarro(true);
+    } catch (err) {
+      setErro(err instanceof ApiError ? err.message : 'Não foi possível cadastrar o cliente');
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function cadastrarCarro() {
+    if (!clienteId) return setErro('Selecione o cliente antes do veículo.');
+    if (!vPlaca.trim()) return setErro('Informe a placa.');
+    if (!vMarca.trim() || !vModelo.trim()) return setErro('Informe marca e modelo.');
+    setOcupado(true);
+    setErro('');
+    try {
+      const novo = await api<CarroOpt>('/carros', {
+        method: 'POST',
+        body: { clienteId, placa: vPlaca, marca: vMarca.trim(), modelo: vModelo.trim() },
+      });
+      setCarros((l) => [...l, novo]);
+      setCarroId(novo.id);
+      setNovoCarro(false);
+    } catch (err) {
+      setErro(err instanceof ApiError ? err.message : 'Não foi possível cadastrar o veículo');
+    } finally {
+      setOcupado(false);
+    }
+  }
 
   async function executar(gerarOS: boolean) {
     if (!clienteId) return setErro('Selecione o cliente.');
@@ -833,35 +886,103 @@ function IdentificarOrcamento({
         precisa de um cliente e de um veículo cadastrados — os itens e o valor não mudam.
       </div>
 
-      <Campo label="Cliente">
-        <select
-          value={clienteId}
-          onChange={(e) => {
-            setClienteId(e.target.value);
-            setCarroId('');
-          }}
-          className={inputCls}
-        >
-          <option value="">Selecione...</option>
-          {clientes.map((c) => (
-            <option key={c.id} value={c.id}>{c.nome}</option>
-          ))}
-        </select>
-      </Campo>
-      <Campo label="Veículo">
-        <select value={carroId} onChange={(e) => setCarroId(e.target.value)} disabled={!clienteId} className={inputCls}>
-          <option value="">{clienteId ? (carrosDoCliente.length ? 'Selecione...' : 'Cliente sem veículo cadastrado') : 'Escolha o cliente'}</option>
-          {carrosDoCliente.map((c) => (
-            <option key={c.id} value={c.id}>{c.placa} — {c.marca} {c.modelo}</option>
-          ))}
-        </select>
-      </Campo>
+      {/* ---- Cliente ---- */}
+      {novoCliente ? (
+        <CaixaCadastro titulo="Novo cliente" onCancelar={() => setNovoCliente(false)}>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo label="Nome">
+              <input value={cNome} onChange={(e) => setCNome(e.target.value)} className={inputCls} placeholder="Nome do cliente" />
+            </Campo>
+            <Campo label="Telefone (opcional)">
+              <input value={cTelefone} onChange={(e) => setCTelefone(mascaraTelefone(e.target.value))} className={inputCls} />
+            </Campo>
+          </div>
+          <BtnPrimary onClick={() => void cadastrarCliente()} disabled={ocupado}>
+            {ocupado ? 'Cadastrando...' : 'Cadastrar cliente'}
+          </BtnPrimary>
+        </CaixaCadastro>
+      ) : (
+        <Campo label="Cliente">
+          <div className="flex gap-2">
+            <select
+              value={clienteId}
+              onChange={(e) => {
+                setClienteId(e.target.value);
+                setCarroId('');
+              }}
+              className={inputCls}
+            >
+              <option value="">Selecione...</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+            <BtnGhost onClick={() => setNovoCliente(true)}>+ Novo</BtnGhost>
+          </div>
+        </Campo>
+      )}
 
-      <p className="text-xs text-grafite/50">
-        Cliente ou veículo ainda sem cadastro? Cadastre em <b>Clientes</b> e <b>Carros</b>, depois volte aqui.
-      </p>
+      {/* ---- Veículo ---- */}
+      {novoCarro ? (
+        <CaixaCadastro titulo="Novo veículo" onCancelar={() => setNovoCarro(false)}>
+          <div className="grid grid-cols-3 gap-3">
+            <Campo label="Placa">
+              <input
+                value={vPlaca}
+                onChange={(e) => setVPlaca(mascaraPlaca(e.target.value))}
+                className={`${inputCls} font-mono uppercase`}
+                placeholder="ABC-1234"
+              />
+            </Campo>
+            <Campo label="Marca">
+              <input value={vMarca} onChange={(e) => setVMarca(e.target.value)} className={inputCls} placeholder="VW" />
+            </Campo>
+            <Campo label="Modelo">
+              <input value={vModelo} onChange={(e) => setVModelo(e.target.value)} className={inputCls} placeholder="Gol" />
+            </Campo>
+          </div>
+          <BtnPrimary onClick={() => void cadastrarCarro()} disabled={ocupado}>
+            {ocupado ? 'Cadastrando...' : 'Cadastrar veículo'}
+          </BtnPrimary>
+        </CaixaCadastro>
+      ) : (
+        <Campo label="Veículo">
+          <div className="flex gap-2">
+            <select value={carroId} onChange={(e) => setCarroId(e.target.value)} disabled={!clienteId} className={inputCls}>
+              <option value="">{clienteId ? (carrosDoCliente.length ? 'Selecione...' : 'Cliente sem veículo cadastrado') : 'Escolha o cliente'}</option>
+              {carrosDoCliente.map((c) => (
+                <option key={c.id} value={c.id}>{c.placa} — {c.marca} {c.modelo}</option>
+              ))}
+            </select>
+            <BtnGhost onClick={() => setNovoCarro(true)}>+ Novo</BtnGhost>
+          </div>
+        </Campo>
+      )}
 
       {erro && <div className="text-vermelho text-sm font-semibold">{erro}</div>}
     </Modal>
+  );
+}
+
+/** Moldura do cadastro embutido, para não confundir com os campos de escolha. */
+function CaixaCadastro({
+  titulo,
+  onCancelar,
+  children,
+}: {
+  titulo: string;
+  onCancelar: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-[1.6px] border-laranja/40 bg-laranja/5 rounded-xl p-3.5 space-y-3">
+      <div className="flex items-center">
+        <span className="text-xs font-extrabold uppercase tracking-wide text-laranja">{titulo}</span>
+        <button type="button" onClick={onCancelar} className="ml-auto text-xs font-bold text-grafite/50 hover:text-grafite">
+          Cancelar
+        </button>
+      </div>
+      {children}
+    </div>
   );
 }
