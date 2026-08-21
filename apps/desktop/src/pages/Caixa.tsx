@@ -127,6 +127,7 @@ function NovoLancamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: 
     <Modal
       title="Novo lançamento"
       onClose={onFechar}
+      onEnviar={() => void salvar()}
       footer={
         <>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>

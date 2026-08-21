@@ -332,6 +332,7 @@ function FormCliente({ cliente, onFechar, onSalvo }: { cliente: Cliente | null; 
     <Modal
       title={editando ? 'Editar cliente' : 'Novo cliente'}
       onClose={onFechar}
+      onEnviar={() => void salvar()}
       footer={
         <>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>

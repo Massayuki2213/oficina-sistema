@@ -135,6 +135,7 @@ function FormServico({ servico, onFechar, onSalvo }: { servico: Servico | null; 
     <Modal
       title={editando ? 'Editar serviço' : 'Novo serviço'}
       onClose={onFechar}
+      onEnviar={() => void salvar()}
       footer={
         <>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>

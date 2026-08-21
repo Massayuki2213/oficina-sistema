@@ -182,6 +182,7 @@ function NovaDespesa({ onFechar, onSalvo }: { onFechar: () => void; onSalvo: () 
     <Modal
       title="Nova despesa"
       onClose={onFechar}
+      onEnviar={() => void salvar()}
       footer={
         <>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>

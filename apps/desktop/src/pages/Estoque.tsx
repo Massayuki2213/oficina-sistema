@@ -168,6 +168,7 @@ function FormPeca({ peca, onFechar, onSalvo }: { peca: Peca | null; onFechar: ()
     <Modal
       title={editando ? 'Editar peça' : 'Nova peça'}
       onClose={onFechar}
+      onEnviar={() => void salvar()}
       footer={
         <>
           {margem != null && <span className="text-sm text-grafite/50 mr-auto self-center">Margem: <b className="text-verde">{margem}%</b></span>}

@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Search, Lock, X, Pencil, Trash2, AlertTriangle, RefreshCw, type LucideIcon } from 'lucide-react';
 import { PERIODOS, type PeriodoKey } from '../lib/periodo';
 import { centavosParaTexto, soDigitos, textoParaCentavos, valorParaCentavos } from '../lib/mascaras';
+import { useAvisos } from '../lib/avisos';
 
 // Peças de UI reutilizadas pelas telas (mesma linguagem visual do Hermes).
 
@@ -46,6 +47,9 @@ export function SearchBar(props: { value: string; onChange: (v: string) => void;
 export function BtnPrimary({ children, onClick, disabled }: { children: ReactNode; onClick?: () => void; disabled?: boolean }) {
   return (
     <button
+      // Explícito porque estes botões vivem dentro do <form> do Modal, e o
+      // padrão do HTML ali é "submit" — Cancelar enviaria o formulário.
+      type="button"
       onClick={onClick}
       disabled={disabled}
       className="bg-laranja hover:bg-laranja-deep disabled:opacity-60 text-white font-bold px-4 py-2.5 rounded-xl shadow-md shadow-laranja/25 transition whitespace-nowrap"
@@ -57,7 +61,7 @@ export function BtnPrimary({ children, onClick, disabled }: { children: ReactNod
 
 export function BtnGhost({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
   return (
-    <button onClick={onClick} className="px-4 py-2.5 rounded-xl border-[1.6px] border-linha font-bold text-petroleo hover:bg-fundo transition">
+    <button type="button" onClick={onClick} className="px-4 py-2.5 rounded-xl border-[1.6px] border-linha font-bold text-petroleo hover:bg-fundo transition">
       {children}
     </button>
   );
@@ -80,32 +84,137 @@ export function Badge({ children, cor = 'bg-linha text-grafite/60' }: { children
 // Ações de linha (editar / excluir) — mesmo visual em todos os cadastros.
 export function AcaoEditar({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} title="Editar" className="text-grafite/50 hover:text-petroleo p-1.5 rounded-lg hover:bg-fundo transition">
+    <button type="button" onClick={onClick} title="Editar" aria-label="Editar" className="text-grafite/50 hover:text-petroleo p-1.5 rounded-lg hover:bg-fundo transition">
       <Pencil size={16} />
     </button>
   );
 }
 export function AcaoExcluir({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled} title="Excluir" className="text-grafite/40 hover:text-vermelho p-1.5 rounded-lg hover:bg-fundo disabled:opacity-40 transition">
+    <button type="button" onClick={onClick} disabled={disabled} title="Excluir" aria-label="Excluir" className="text-grafite/40 hover:text-vermelho p-1.5 rounded-lg hover:bg-fundo disabled:opacity-40 transition">
       <Trash2 size={16} />
     </button>
   );
 }
 
-export function Modal({ title, onClose, children, footer, size = 'md' }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode; size?: 'md' | 'lg' }) {
+/**
+ * Janela de formulário do sistema.
+ *
+ * Além de aparecer, ela cuida do atrito de quem usa o dia inteiro:
+ *  - **Enter envia** (passe `onEnviar`) — no balcão a mão não larga o teclado;
+ *  - **ESC fecha**;
+ *  - **o primeiro campo já vem focado**, então dá para sair digitando;
+ *  - **a página de trás não rola** junto;
+ *  - **clicar fora não joga trabalho fora**: se já houve digitação, pergunta
+ *    antes de descartar. Perder um orçamento montado pela metade por um clique
+ *    torto era o erro mais caro da tela.
+ */
+export function Modal({
+  title,
+  onClose,
+  children,
+  footer,
+  size = 'md',
+  onEnviar,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer: ReactNode;
+  size?: 'md' | 'lg';
+  /** Quando informado, o conteúdo vira <form> e Enter dispara esta função. */
+  onEnviar?: () => void;
+}) {
   const largura = size === 'lg' ? 'max-w-2xl' : 'max-w-md';
+  const avisos = useAvisos();
+  const caixa = useRef<HTMLDivElement>(null);
+  const alterado = useRef(false);
+
+  // Foco no primeiro campo + trava da rolagem de trás, enquanto a janela existe.
+  useEffect(() => {
+    const anterior = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const primeiro = caixa.current?.querySelector<HTMLElement>(
+      'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])',
+    );
+    primeiro?.focus();
+    if (primeiro instanceof HTMLInputElement) primeiro.select();
+
+    return () => {
+      document.body.style.overflow = anterior;
+    };
+  }, []);
+
+  /** Só pergunta se houve digitação — confirmar à toa também irrita. */
+  const fecharComCuidado = useCallback(async () => {
+    if (!alterado.current) return onClose();
+    const ok = await avisos.confirmar({
+      titulo: 'Descartar o que você preencheu?',
+      mensagem: 'Você digitou algo nesta janela. Fechar agora perde o que não foi salvo.',
+      botao: 'Descartar',
+      perigo: true,
+    });
+    if (ok) onClose();
+  }, [avisos, onClose]);
+
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') void fecharComCuidado();
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [fecharComCuidado]);
+
+  const corpo = (
+    <>
+      <div className="p-6 space-y-3.5">{children}</div>
+      <div className="flex justify-end gap-2.5 px-6 py-4 border-t border-linha">{footer}</div>
+    </>
+  );
+
   return (
-    <div className="fixed inset-0 bg-petroleo/50 grid place-items-center p-5 z-50" onClick={onClose}>
-      <div className={`bg-white rounded-2xl w-full ${largura} max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-petroleo/50 grid place-items-center p-5 z-50" onClick={() => void fecharComCuidado()}>
+      <div
+        ref={caixa}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`bg-white rounded-2xl w-full ${largura} max-h-[90vh] overflow-y-auto`}
+        onClick={(e) => e.stopPropagation()}
+        // Qualquer digitação marca a janela como suja, sem cada formulário
+        // ter que avisar — um `onInput` que sobe é mais confiável que 18 flags.
+        onInput={() => {
+          alterado.current = true;
+        }}
+      >
         <div className="flex items-center px-6 py-5 border-b border-linha">
           <h3 className="text-lg font-extrabold text-petroleo">{title}</h3>
-          <button onClick={onClose} className="ml-auto text-grafite/40 hover:text-grafite w-8 h-8 grid place-items-center rounded-lg hover:bg-fundo">
+          <button
+            type="button"
+            onClick={() => void fecharComCuidado()}
+            aria-label="Fechar"
+            className="ml-auto text-grafite/40 hover:text-grafite w-8 h-8 grid place-items-center rounded-lg hover:bg-fundo"
+          >
             <X size={20} />
           </button>
         </div>
-        <div className="p-6 space-y-3.5">{children}</div>
-        <div className="flex justify-end gap-2.5 px-6 py-4 border-t border-linha">{footer}</div>
+
+        {onEnviar ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onEnviar();
+            }}
+          >
+            {/* Os botões visíveis são type="button"; sem um submit o Enter não
+                dispararia o envio implícito do formulário. Este existe só p/ isso. */}
+            <button type="submit" className="hidden" tabIndex={-1} aria-hidden="true" />
+            {corpo}
+          </form>
+        ) : (
+          corpo
+        )}
       </div>
     </div>
   );
@@ -135,13 +244,20 @@ export function InputDinheiro({ value, onChange }: { value: string; onChange: (v
   );
 }
 
+/**
+ * Rótulo + campo.
+ *
+ * O <label> ENVOLVE o controle em vez de ficar ao lado dele: assim a ligação é
+ * implícita, clicar no rótulo foca o campo e o leitor de tela anuncia o nome
+ * certo — tudo isso sem ter que inventar um id em cada uma das chamadas.
+ */
 export function Campo({ label, erro, children }: { label: string; erro?: string; children: ReactNode }) {
   return (
-    <div>
-      <label className="block text-xs font-bold text-grafite/50 mb-1.5">{label}</label>
+    <label className="block">
+      <span className="block text-xs font-bold text-grafite/50 mb-1.5">{label}</span>
       {children}
-      {erro && <div className="text-vermelho text-xs mt-1">{erro}</div>}
-    </div>
+      {erro && <span className="block text-vermelho text-xs mt-1">{erro}</span>}
+    </label>
   );
 }
 

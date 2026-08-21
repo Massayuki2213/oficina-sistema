@@ -157,6 +157,7 @@ function FormDistribuidor({ distribuidor, onFechar, onSalvo }: { distribuidor: D
     <Modal
       title={editando ? 'Editar distribuidor' : 'Novo distribuidor'}
       onClose={onFechar}
+      onEnviar={() => void salvar()}
       footer={
         <>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>

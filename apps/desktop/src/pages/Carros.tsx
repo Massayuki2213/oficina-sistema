@@ -165,6 +165,7 @@ function FormCarro({ carro, onFechar, onSalvo }: { carro: Carro | null; onFechar
     <Modal
       title={editando ? 'Editar veículo' : 'Novo veículo'}
       onClose={onFechar}
+      onEnviar={() => void salvar()}
       footer={
         <>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>

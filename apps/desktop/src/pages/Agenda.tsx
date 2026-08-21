@@ -285,6 +285,7 @@ function NovoAgendamento({ onFechar, onSalvo }: { onFechar: () => void; onSalvo:
     <Modal
       title="Novo agendamento"
       onClose={onFechar}
+      onEnviar={() => void salvar()}
       footer={
         <>
           <BtnGhost onClick={onFechar}>Cancelar</BtnGhost>

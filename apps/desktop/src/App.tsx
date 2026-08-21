@@ -18,7 +18,7 @@ import Distribuidores from './pages/Distribuidores';
 import Compras from './pages/Compras';
 import Configuracoes from './pages/Configuracoes';
 import Auditoria from './pages/Auditoria';
-import EmBreve from './pages/EmBreve';
+import NaoEncontrada from './pages/NaoEncontrada';
 
 export default function App() {
   const { usuario } = useAuth();
@@ -43,7 +43,7 @@ export default function App() {
         <Route path="/relatorios" element={<Relatorios />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="/auditoria" element={<Auditoria />} />
-        <Route path="*" element={<EmBreve />} />
+        <Route path="*" element={<NaoEncontrada />} />
       </Routes>
     </Layout>
   );
