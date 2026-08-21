@@ -48,7 +48,26 @@ function osToDTO(o: any) {
   };
 }
 
+/**
+ * RN-06: o orçamento vence sozinho depois da validade.
+ *
+ * A expiração é aplicada na LEITURA, não por um job de fundo. Job só roda com a
+ * API ligada — erraria justamente o dia em que a oficina ficou fechada, que é
+ * quando os orçamentos vencem. Assim, quem abre a tela sempre vê o status certo.
+ *
+ * Só RASCUNHO e ENVIADO expiram: APROVADO já virou OS e RECUSADO já morreu.
+ */
+export async function expirarVencidos() {
+  const { count } = await prisma.orcamento.updateMany({
+    where: { status: { in: ['RASCUNHO', 'ENVIADO'] }, validade: { lt: new Date() } },
+    data: { status: 'EXPIRADO' },
+  });
+  if (count > 0) await invalidarCache();
+  return count;
+}
+
 export async function listOrcamentos(busca?: string) {
+  await expirarVencidos();
   const orcamentos = await prisma.orcamento.findMany({
     orderBy: { data: 'desc' },
     include: {
@@ -68,6 +87,7 @@ export async function listOrcamentos(busca?: string) {
 }
 
 export async function getOrcamento(id: string) {
+  await expirarVencidos();
   const orc = await prisma.orcamento.findUnique({ where: { id }, include: fullInclude });
   return orc ? toDTO(orc) : null;
 }
@@ -144,13 +164,17 @@ export async function updateOrcamento(id: string, data: CreateOrcamentoInput) {
 
   const { servicosCreate, pecasCreate, ...campos } = await montarOrcamento(data);
 
+  // RN-06: editar renova a validade, então o orçamento sai do limbo de EXPIRADO
+  // e volta a valer como rascunho. Sem isso ele ficaria com data nova e status velho.
+  const status = atual.status === 'EXPIRADO' ? ('RASCUNHO' as const) : atual.status;
+
   // Troca os itens por inteiro: é o que a tela manda, e evita casar item a item.
   const atualizado = await prisma.$transaction(async (tx) => {
     await tx.orcamentoServico.deleteMany({ where: { orcamentoId: id } });
     await tx.orcamentoPeca.deleteMany({ where: { orcamentoId: id } });
     return tx.orcamento.update({
       where: { id },
-      data: { ...campos, servicos: { create: servicosCreate }, pecas: { create: pecasCreate } },
+      data: { ...campos, status, servicos: { create: servicosCreate }, pecas: { create: pecasCreate } },
       include: fullInclude,
     });
   });
@@ -186,8 +210,12 @@ export async function aprovarParaOS(id: string, mecanicoId?: string) {
   });
   if (!orc) throw new AppError(404, 'Orçamento não encontrado');
   if (orc.ordem) throw new AppError(409, 'Este orçamento já virou uma Ordem de Serviço');
-  if (orc.status === 'RECUSADO' || orc.status === 'EXPIRADO') {
-    throw new AppError(400, 'Orçamento recusado ou expirado não pode virar OS');
+  if (orc.status === 'RECUSADO') throw new AppError(400, 'Orçamento recusado não pode virar OS');
+
+  // RN-06: confere a validade aqui também, e não só o status. O status pode estar
+  // velho na mão de quem deixou a tela aberta — a data é a fonte da verdade.
+  if (orc.status === 'EXPIRADO' || orc.validade < new Date()) {
+    throw new AppError(400, 'Orçamento expirado. Refaça o orçamento com os preços de hoje.');
   }
 
   // RN-03: se faltar peça, a OS nasce "aguardando peça".

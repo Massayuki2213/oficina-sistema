@@ -17,6 +17,7 @@ import Relatorios from './pages/Relatorios';
 import Distribuidores from './pages/Distribuidores';
 import Compras from './pages/Compras';
 import Configuracoes from './pages/Configuracoes';
+import Auditoria from './pages/Auditoria';
 import EmBreve from './pages/EmBreve';
 
 export default function App() {
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/contas-receber" element={<Contas />} />
         <Route path="/relatorios" element={<Relatorios />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
+        <Route path="/auditoria" element={<Auditoria />} />
         <Route path="*" element={<EmBreve />} />
       </Routes>
     </Layout>

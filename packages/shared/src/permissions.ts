@@ -13,6 +13,7 @@ export interface Permissoes {
   gerenciarUsuarios: boolean; // cadastrar/editar usuários e perfis
   apagarRegistros: boolean; // exclusões definitivas / apagar histórico
   gerenciarBackup: boolean; // ver e gerar cópias de segurança do banco
+  verAuditoria: boolean; // consultar o histórico de quem fez o quê
 }
 
 export const PERMISSOES: Record<Perfil, Permissoes> = {
@@ -23,6 +24,7 @@ export const PERMISSOES: Record<Perfil, Permissoes> = {
     gerenciarUsuarios: true,
     apagarRegistros: true,
     gerenciarBackup: true,
+    verAuditoria: true,
   },
   ATENDENTE: {
     verFinanceiro: false,
@@ -31,6 +33,7 @@ export const PERMISSOES: Record<Perfil, Permissoes> = {
     gerenciarUsuarios: false,
     apagarRegistros: false,
     gerenciarBackup: false,
+    verAuditoria: false,
   },
   MECANICO: {
     verFinanceiro: false,
@@ -39,6 +42,7 @@ export const PERMISSOES: Record<Perfil, Permissoes> = {
     gerenciarUsuarios: false,
     apagarRegistros: false,
     gerenciarBackup: false,
+    verAuditoria: false,
   },
 };
 

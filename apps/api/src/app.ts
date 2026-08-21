@@ -21,6 +21,8 @@ import { backupRoutes } from './modules/backup/backup.routes.js';
 import { usuariosRoutes } from './modules/usuarios/usuarios.routes.js';
 import { fornecedoresRoutes } from './modules/fornecedores/fornecedores.routes.js';
 import { comprasRoutes } from './modules/compras/compras.routes.js';
+import { auditoriaRoutes } from './modules/auditoria/auditoria.routes.js';
+import { plugarAuditoria } from './lib/auditoria.js';
 import { AppError } from './lib/errors.js';
 
 export function buildApp() {
@@ -50,6 +52,10 @@ export function buildApp() {
     }
   });
 
+  // Auditoria: hook global que grava toda alteração bem-sucedida.
+  // Vem antes das rotas para observar todas elas.
+  plugarAuditoria(app);
+
   // Rotas
   app.register(healthRoutes);
   app.register(authRoutes, { prefix: '/auth' });
@@ -68,6 +74,7 @@ export function buildApp() {
   app.register(usuariosRoutes, { prefix: '/usuarios' });
   app.register(fornecedoresRoutes, { prefix: '/fornecedores' });
   app.register(comprasRoutes, { prefix: '/compras' });
+  app.register(auditoriaRoutes, { prefix: '/auditoria' });
 
   // Tratador global: converte AppError (regra de negócio) na resposta certa.
   app.setErrorHandler((error, req, reply) => {

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { PerfilUsuario } from '@prisma/client';
 import { authenticate } from '../../lib/auth.js';
+import { registrarLogin } from '../../lib/auditoria.js';
 import { loginSchema } from './auth.schema.js';
 import { validarCredenciais, listUsuarios } from './auth.service.js';
 
@@ -14,8 +15,11 @@ export async function authRoutes(app: FastifyInstance) {
 
     const usuario = await validarCredenciais(parsed.data.email, parsed.data.senha);
     if (!usuario) {
+      // Tentativa errada também vira log: senha errada em série é sinal de problema.
+      await registrarLogin(null, parsed.data.email, false);
       return reply.code(401).send({ message: 'E-mail ou senha incorretos' });
     }
+    await registrarLogin(usuario.id, usuario.email, true);
 
     const token = app.jwt.sign({ sub: usuario.id, nome: usuario.nome, perfil: usuario.perfil });
     return {

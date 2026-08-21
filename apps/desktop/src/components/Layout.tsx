@@ -16,13 +16,14 @@ import {
   Settings,
   Truck,
   ShoppingCart,
+  History,
   Wrench as Logo,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { iniciais, LABEL_PERFIL } from '../lib/format';
 
-type Item = { to: string; label: string; icon: LucideIcon; financeiro?: boolean };
+type Item = { to: string; label: string; icon: LucideIcon; financeiro?: boolean; dono?: boolean };
 const GRUPOS: { titulo: string; itens: Item[] }[] = [
   { titulo: 'Principal', itens: [{ to: '/', label: 'Início', icon: Home }] },
   {
@@ -55,12 +56,16 @@ const GRUPOS: { titulo: string; itens: Item[] }[] = [
   },
   {
     titulo: 'Sistema',
-    itens: [{ to: '/configuracoes', label: 'Configurações', icon: Settings }],
+    itens: [
+      { to: '/configuracoes', label: 'Configurações', icon: Settings },
+      { to: '/auditoria', label: 'Histórico', icon: History, dono: true },
+    ],
   },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { usuario, sair, podeVerFinanceiro } = useAuth();
+  const ehDono = usuario?.perfil === 'DONO';
 
   return (
     <div className="grid grid-cols-[238px_1fr] grid-rows-[64px_1fr] h-screen">
@@ -81,7 +86,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <div key={g.titulo} className="px-3 pb-1 pt-3">
               <div className="text-[10px] uppercase tracking-widest text-[#6f95ab] font-bold px-2 pb-1.5">{g.titulo}</div>
               {g.itens
-                .filter((i) => !i.financeiro || podeVerFinanceiro)
+                .filter((i) => (!i.financeiro || podeVerFinanceiro) && (!i.dono || ehDono))
                 .map((i) => {
                   const Icon = i.icon;
                   return (
