@@ -1,0 +1,53 @@
+# Hermes — atualização de dependências (Dependabot).
+#
+# Toda segunda de manhã abre PRs para a branch dev, agrupados para não virar
+# enxurrada: um PR com as atualizações menores de produção, outro com as de
+# desenvolvimento. Versão maior (breaking) vem em PR próprio, para decidir com calma.
+# O CI roda em cada PR (lint, tipos, 180+ testes, build e imagem Docker).
+#
+# Correções de SEGURANÇA não esperam a segunda: com "Dependabot security updates"
+# ligado nas configurações do repositório, o GitHub abre o PR assim que sai o alerta.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 5
+    groups:
+      producao:
+        dependency-type: production
+        update-types: [minor, patch]
+      desenvolvimento:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  # O app de desktop (Electron) tem o próprio package-lock.
+  - package-ecosystem: npm
+    directory: /apps/desktop/electron
+    target-branch: dev
+    schedule:
+      interval: monthly
+      timezone: America/Sao_Paulo
+    groups:
+      janela:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+      timezone: America/Sao_Paulo
+
+  # Imagem base do Dockerfile (node).
+  - package-ecosystem: docker
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+      timezone: America/Sao_Paulo

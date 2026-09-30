@@ -1,6 +1,6 @@
 {
   "name": "hermes-oficina",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Hermes — Sistema de Gestão para Oficina Mecânica",
   "workspaces": [
@@ -8,19 +8,37 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "concurrently -k -n api,tela -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @hermes/api",
+    "dev:web": "npm run dev -w @hermes/desktop",
+    "build": "npm run build -w @hermes/desktop && npm run build -w @hermes/api",
+    "start": "npm run start -w @hermes/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:prepare": "npm run test:prepare -w @hermes/api",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f",
     "db:generate": "npm run db:generate -w @hermes/api",
     "db:migrate": "npm run db:migrate -w @hermes/api",
+    "db:deploy": "npm run db:deploy -w @hermes/api",
     "db:seed": "npm run db:seed -w @hermes/api",
     "db:studio": "npm run db:studio -w @hermes/api",
-    "dev:api": "npm run dev -w @hermes/api",
-    "dev:desktop": "npm run dev -w @hermes/desktop",
-    "test": "npm run test -w @hermes/api",
-    "test:prepare": "npm run test:prepare -w @hermes/api"
+    "docker:build": "docker build -t hermes:1.0.0 .",
+    "lint": "eslint ."
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^9.2.4",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "typescript-eslint": "^8.71.0"
   }
 }

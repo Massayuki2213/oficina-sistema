@@ -6,6 +6,8 @@ node_modules/
 # Build
 dist/
 build/
+# ...menos os recursos do instalador do app de desktop (ícone), que são fonte.
+!apps/desktop/electron/build/
 out/
 .vite/
 *.tsbuildinfo

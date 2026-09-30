@@ -1,0 +1,64 @@
+# ==========================================================
+# Hermes — instalação na oficina: banco + sistema.
+#
+#   1. Crie um arquivo .env ao lado deste com (no mínimo):
+#        POSTGRES_PASSWORD=<uma senha forte>
+#        SESSAO_SEGREDO=<openssl rand -hex 32>
+#   2. docker compose -f docker-compose.prod.yml up -d --build
+#   3. Abra http://<ip-deste-computador>:3333 em qualquer PC ou tablet
+#      da rede. O primeiro acesso cria o usuário Dono.
+#
+# Passo a passo completo (backup fora do PC, atualização, HTTPS):
+# docs/IMPLANTACAO.md
+# ==========================================================
+name: hermes
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hermes
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: hermes
+      TZ: ${TZ:-America/Sao_Paulo}
+    volumes:
+      - dados:/var/lib/postgresql/data
+    # Sem porta publicada: o banco só conversa com o sistema, dentro do Docker.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hermes -d hermes"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    image: hermes:1.0.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Conexão do DONO do banco: só para as migrações e os comandos de administração.
+      # Na partida, o servidor passa a usar o hermes_app, que só lê e grava dados
+      # (docker/entrypoint.sh). DB_USUARIO_APP=false desliga isso (banco gerenciado).
+      DATABASE_URL: postgresql://hermes:${POSTGRES_PASSWORD}@db:5432/hermes?schema=public
+      DB_USUARIO_APP: ${DB_USUARIO_APP:-true}
+      SESSAO_SEGREDO: ${SESSAO_SEGREDO:?Defina SESSAO_SEGREDO no .env (openssl rand -hex 32)}
+      SESSAO_DURACAO: ${SESSAO_DURACAO:-12h}
+      TZ: ${TZ:-America/Sao_Paulo}
+      COOKIE_SECURE: ${COOKIE_SECURE:-auto}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+      BACKUP_RETENCAO_DIAS: ${BACKUP_RETENCAO_DIAS:-14}
+      # Opcional: cifra as cópias (docs/IMPLANTACAO.md → "Backup cifrado").
+      BACKUP_SENHA: ${BACKUP_SENHA:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${HERMES_PORT:-3333}:3333"
+    volumes:
+      - backups:/app/backups
+
+volumes:
+  dados:
+  backups:

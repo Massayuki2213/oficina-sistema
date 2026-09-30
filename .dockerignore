@@ -1,0 +1,17 @@
+# Nada disso entra na imagem: o build é feito do zero lá dentro.
+**/node_modules
+**/dist
+**/.vite
+**/*.tsbuildinfo
+.git
+.github
+.vscode
+.idea
+.env
+.env.*
+!.env.example
+backups
+**/*.log
+apps/desktop/release
+apps/desktop/electron/out
+docs
