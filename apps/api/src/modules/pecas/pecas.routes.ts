@@ -1,88 +1,57 @@
-import type { FastifyInstance } from 'fastify';
-import { Prisma } from '@prisma/client';
-import { authenticate, requirePermission } from '../../lib/auth.js';
-import { createPecaSchema, updatePecaSchema, entradaEstoqueSchema } from './pecas.schema.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import {
+  ajusteEstoqueSchema,
+  criarPecaSchema,
+  entradaEstoqueSchema,
+  idParams,
+  listarPecasQuery,
+  movimentosQuery,
+  pecaSchema,
+} from '@hermes/shared/schemas';
+import { exigir } from '../../plugins/autenticacao.js';
 import * as service from './pecas.service.js';
 
-function isDuplicate(err: unknown) {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
-}
-function isNotFound(err: unknown) {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
-}
+const tags = ['Peças e estoque'];
 
-export async function pecasRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', authenticate);
+export const pecasRoutes: FastifyPluginAsyncZod = async (app) => {
+  // Leitura: todo perfil (o custo só aparece para quem pode ver).
+  app.get('/', { schema: { tags, querystring: listarPecasQuery } }, (req) => service.listar(req.query, req.usuario));
 
-  // GET /pecas?busca=texto — lista/busca (nome, SKU ou código de barras)
-  app.get('/', async (req) => service.listPecas((req.query as { busca?: string }).busca));
+  // GET /api/pecas/codigo/:codigo — o "bip" do leitor. 404 = peça nova.
+  app.get('/codigo/:codigo', { schema: { tags, params: z.object({ codigo: z.string().min(1) }) } }, (req) =>
+    service.buscarPorCodigo(req.params.codigo, req.usuario),
+  );
 
-  // GET /pecas/codigo/:codigo — o "scan": acha a peça pelo código de barras lido.
-  // 404 sinaliza para o front abrir o cadastro de peça nova.
-  app.get('/codigo/:codigo', async (req, reply) => {
-    const { codigo } = req.params as { codigo: string };
-    const peca = await service.buscarPorCodigo(codigo);
-    if (!peca) return reply.code(404).send({ message: 'Peça não encontrada', codigoBarras: codigo });
-    return peca;
+  app.get('/:id', { schema: { tags, params: idParams } }, (req) => service.buscar(req.params.id, req.usuario));
+
+  app.get('/:id/movimentos', { schema: { tags, params: idParams, querystring: movimentosQuery } }, (req) =>
+    service.movimentos(req.params.id, req.query, req.usuario),
+  );
+
+  // Cadastro mexe em custo → Dono.
+  app.post('/', { onRequest: exigir('alterarPrecoCusto'), schema: { tags, body: criarPecaSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criar(req.body, req.usuario)),
+  );
+  app.put('/:id', { onRequest: exigir('alterarPrecoCusto'), schema: { tags, params: idParams, body: pecaSchema } }, (req) =>
+    service.atualizar(req.params.id, req.body, req.usuario),
+  );
+  app.delete('/:id', { onRequest: exigir('apagarRegistros'), schema: { tags, params: idParams } }, async (req, reply) => {
+    await service.inativar(req.params.id);
+    return reply.code(204).send();
   });
 
-  // POST /pecas — cadastro. Mexe em preço de custo → restrito (Dono).
-  app.post('/', { preHandler: [requirePermission('alterarPrecoCusto')] }, async (req, reply) => {
-    const parsed = createPecaSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    try {
-      const peca = await service.createPeca(parsed.data);
-      return reply.code(201).send(peca);
-    } catch (err) {
-      if (isDuplicate(err)) {
-        return reply.code(409).send({ message: 'Já existe peça com esse código de barras ou SKU' });
-      }
-      throw err;
-    }
-  });
+  // POST /api/pecas/:id/entrada — reposição (leitor de código de barras, nota recebida).
+  app.post(
+    '/:id/entrada',
+    { onRequest: exigir('movimentarEstoque'), schema: { tags, params: idParams, body: entradaEstoqueSchema } },
+    (req) => service.entrada(req.params.id, req.body, req.usuario),
+  );
 
-  // PUT /pecas/:id — edição. Também restrito (mexe em custo/margem).
-  app.put('/:id', { preHandler: [requirePermission('alterarPrecoCusto')] }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = updatePecaSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    try {
-      const peca = await service.updatePeca(id, parsed.data);
-      if (!peca) return reply.code(404).send({ message: 'Peça não encontrada' });
-      return peca;
-    } catch (err) {
-      if (isDuplicate(err)) {
-        return reply.code(409).send({ message: 'Já existe peça com esse código de barras ou SKU' });
-      }
-      throw err;
-    }
-  });
-
-  // DELETE /pecas/:id — inativa (soft delete). Só quem pode apagar registros (Dono).
-  app.delete('/:id', { preHandler: [requirePermission('apagarRegistros')] }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    try {
-      await service.deactivatePeca(id);
-      return reply.code(204).send();
-    } catch (err) {
-      if (isNotFound(err)) return reply.code(404).send({ message: 'Peça não encontrada' });
-      throw err;
-    }
-  });
-
-  // POST /pecas/:id/estoque — entrada de estoque (recebimento / leitura no balcão).
-  app.post('/:id/estoque', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = entradaEstoqueSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    const peca = await service.entradaEstoque(id, parsed.data);
-    if (!peca) return reply.code(404).send({ message: 'Peça não encontrada' });
-    return peca;
-  });
-}
+  // POST /api/pecas/:id/ajuste — inventário: saldo passa a ser o contado.
+  app.post(
+    '/:id/ajuste',
+    { onRequest: exigir('ajustarEstoque'), schema: { tags, params: idParams, body: ajusteEstoqueSchema } },
+    (req) => service.ajuste(req.params.id, req.body, req.usuario),
+  );
+};

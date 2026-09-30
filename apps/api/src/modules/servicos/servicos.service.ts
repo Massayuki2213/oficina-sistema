@@ -1,63 +1,63 @@
-import type { Servico as PrismaServico } from '@prisma/client';
+import type { Prisma, Servico } from '@prisma/client';
+import type { z } from 'zod';
+import type { Pagina, ServicoDTO } from '@hermes/shared';
+import type { listarServicosQuery, servicoSchema } from '@hermes/shared/schemas';
 import { prisma } from '../../lib/prisma.js';
-import { redis } from '../../lib/redis.js';
-import type { CreateServicoInput, UpdateServicoInput } from './servicos.schema.js';
+import { num } from '../../lib/dinheiro.js';
+import { pagina, paginar } from '../../lib/paginacao.js';
+import { falhaDeVersao, naVersao, proximaVersao } from '../../lib/versao.js';
 
-const CACHE_KEY = 'servicos:list';
-const CACHE_TTL = 60;
-const invalidarCache = () => redis.del(CACHE_KEY);
+// Catálogo de mão de obra. O preço daqui é o de tabela: ao entrar num
+// orçamento ou OS ele é "congelado" no item (mudar o catálogo depois não
+// altera o que já foi combinado com o cliente).
 
-// Converte o Decimal do Prisma para number (contrato do @hermes/shared).
-function toDTO(s: PrismaServico) {
-  return { ...s, precoMaoDeObra: Number(s.precoMaoDeObra) };
+function paraDTO(s: Servico): ServicoDTO {
+  return {
+    id: s.id,
+    versao: s.versao,
+    nome: s.nome,
+    descricao: s.descricao,
+    precoMaoDeObra: num(s.precoMaoDeObra),
+    tempoEstimadoMin: s.tempoEstimadoMin,
+    categoria: s.categoria,
+    ativo: s.ativo,
+  };
 }
 
-export async function listServicos(busca?: string) {
-  if (!busca) {
-    const hit = await redis.get(CACHE_KEY);
-    if (hit) return JSON.parse(hit);
-  }
-
-  const servicos = await prisma.servico.findMany({
-    where: {
-      ativo: true,
-      ...(busca
-        ? {
-            OR: [
-              { nome: { contains: busca, mode: 'insensitive' } },
-              { categoria: { contains: busca, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: { nome: 'asc' },
-  });
-
-  const dto = servicos.map(toDTO);
-  if (!busca) await redis.set(CACHE_KEY, JSON.stringify(dto), 'EX', CACHE_TTL);
-  return dto;
+export async function listar(q: z.output<typeof listarServicosQuery>): Promise<Pagina<ServicoDTO>> {
+  const where: Prisma.ServicoWhereInput = {
+    ativo: true,
+    ...(q.busca
+      ? {
+          OR: [
+            { nome: { contains: q.busca, mode: 'insensitive' } },
+            { categoria: { contains: q.busca, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+  };
+  const [itens, total] = await prisma.$transaction([
+    prisma.servico.findMany({ where, orderBy: { nome: 'asc' }, ...paginar(q) }),
+    prisma.servico.count({ where }),
+  ]);
+  return pagina(itens.map(paraDTO), total, q);
 }
 
-export async function getServico(id: string) {
-  const servico = await prisma.servico.findUnique({ where: { id } });
-  return servico ? toDTO(servico) : null;
+export async function buscar(id: string): Promise<ServicoDTO> {
+  return paraDTO(await prisma.servico.findUniqueOrThrow({ where: { id } }));
 }
 
-export async function createServico(data: CreateServicoInput) {
-  const servico = await prisma.servico.create({ data });
-  await invalidarCache();
-  return toDTO(servico);
+export async function criar(dados: z.output<typeof servicoSchema>) {
+  return paraDTO(await prisma.servico.create({ data: dados }));
 }
 
-export async function updateServico(id: string, data: UpdateServicoInput) {
-  const servico = await prisma.servico.update({ where: { id }, data });
-  await invalidarCache();
-  return toDTO(servico);
+export async function atualizar(id: string, { versao, ...dados }: z.output<typeof servicoSchema>) {
+  const r = await prisma.servico.updateMany({ where: { id, ...naVersao(versao) }, data: { ...dados, ...proximaVersao } });
+  if (r.count === 0) await falhaDeVersao('servicos', id, (await prisma.servico.count({ where: { id } })) > 0, 'Serviço não encontrado');
+  return buscar(id);
 }
 
-// Soft delete: mantém o serviço no histórico das OS antigas, só tira do catálogo.
-export async function deactivateServico(id: string) {
-  const servico = await prisma.servico.update({ where: { id }, data: { ativo: false } });
-  await invalidarCache();
-  return toDTO(servico);
+/** Sai do catálogo, mas continua nas OS antigas. */
+export async function inativar(id: string) {
+  await prisma.servico.update({ where: { id }, data: { ativo: false } });
 }

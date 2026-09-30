@@ -1,54 +1,43 @@
-import type { FastifyInstance } from 'fastify';
-import { authenticate, requirePermission } from '../../lib/auth.js';
-import { createCompraSchema } from './compras.schema.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import { compraSchema, idParams, listarComprasQuery, pagarCompraSchema } from '@hermes/shared/schemas';
+import { exigir, exigirAlguma } from '../../plugins/autenticacao.js';
 import * as service from './compras.service.js';
 
-export async function comprasRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', authenticate);
+const tags = ['Compras'];
 
-  // GET /compras?de=&ate=&fornecedorId=&status= — lista com totais
-  app.get('/', async (req) => {
-    const q = req.query as { de?: string; ate?: string; fornecedorId?: string; status?: 'PENDENTE' | 'PAGA' };
-    return service.listCompras(q);
-  });
+export const comprasRoutes: FastifyPluginAsyncZod = async (app) => {
+  // Compra define custo de estoque e gera dívida: assunto do Dono.
+  app.addHook('onRequest', exigirAlguma('alterarPrecoCusto', 'verFinanceiro'));
+  const financeiro = { onRequest: exigir('verFinanceiro') };
 
-  // GET /compras/a-pagar — quanto devo a cada distribuidor (antes de /:id!)
-  app.get('/a-pagar', { preHandler: [requirePermission('verFinanceiro')] }, async () => service.contasAPagar());
+  app.get('/', { schema: { tags, querystring: listarComprasQuery } }, (req) => service.listar(req.query));
 
-  // GET /compras/:id — detalhe com itens
-  app.get('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const compra = await service.getCompra(id);
-    if (!compra) return reply.code(404).send({ message: 'Compra não encontrada' });
-    return compra;
-  });
+  // GET /api/compras/a-pagar — quanto devo a cada distribuidor
+  app.get('/a-pagar', { ...financeiro, schema: { tags } }, () => service.contasAPagar());
 
-  // POST /compras — registra a compra e dá entrada no estoque.
-  // Define custo de peças/estoque: exige alterarPrecoCusto (Dono).
-  app.post('/', { preHandler: [requirePermission('alterarPrecoCusto')] }, async (req, reply) => {
-    const parsed = createCompraSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return reply.code(201).send(await service.createCompra(parsed.data, req.user.sub));
-  });
+  app.get('/:id', { schema: { tags, params: idParams } }, (req) => service.buscar(req.params.id));
 
-  // PATCH /compras/:id/pagar — quita uma compra (sai do caixa). Financeiro.
-  app.patch('/:id/pagar', { preHandler: [requirePermission('verFinanceiro')] }, async (req) => {
-    const { id } = req.params as { id: string };
-    return service.pagarCompra(id, req.user.sub);
-  });
+  // POST /api/compras — registra a compra e dá entrada no estoque.
+  app.post('/', { onRequest: exigir('alterarPrecoCusto'), schema: { tags, body: compraSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criar(req.body, req.usuario)),
+  );
 
-  // POST /compras/acerto/:fornecedorId — quita tudo do distribuidor de uma vez.
-  app.post('/acerto/:fornecedorId', { preHandler: [requirePermission('verFinanceiro')] }, async (req) => {
-    const { fornecedorId } = req.params as { fornecedorId: string };
-    return service.quitarFornecedor(fornecedorId, req.user.sub);
-  });
+  // POST /api/compras/:id/pagar — quita uma compra (sai do caixa).
+  app.post('/:id/pagar', { ...financeiro, schema: { tags, params: idParams, body: pagarCompraSchema } }, (req) =>
+    service.pagar(req.params.id, req.body, req.usuario),
+  );
 
-  // DELETE /compras/:id — apaga compra a prazo (estorna estoque). Só quem pode apagar.
-  app.delete('/:id', { preHandler: [requirePermission('apagarRegistros')] }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    await service.deleteCompra(id);
+  // POST /api/compras/acerto/:fornecedorId — quita tudo do distribuidor de uma vez.
+  app.post(
+    '/acerto/:fornecedorId',
+    { ...financeiro, schema: { tags, params: z.object({ fornecedorId: z.string().min(1) }), body: pagarCompraSchema } },
+    (req) => service.quitarFornecedor(req.params.fornecedorId, req.body, req.usuario),
+  );
+
+  // DELETE /api/compras/:id — apaga compra a prazo (estorna o estoque).
+  app.delete('/:id', { onRequest: exigir('apagarRegistros'), schema: { tags, params: idParams } }, async (req, reply) => {
+    await service.excluir(req.params.id, req.usuario);
     return reply.code(204).send();
   });
-}
+};

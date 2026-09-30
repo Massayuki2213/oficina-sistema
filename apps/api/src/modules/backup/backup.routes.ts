@@ -1,19 +1,35 @@
-import type { FastifyInstance } from 'fastify';
-import { authenticate, requirePermission } from '../../lib/auth.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import { exigir } from '../../plugins/autenticacao.js';
 import * as service from './backup.service.js';
 
-export async function backupRoutes(app: FastifyInstance) {
-  // O backup é a cópia de tudo: só o Dono vê e gera.
-  app.addHook('preHandler', authenticate);
-  app.addHook('preHandler', requirePermission('gerenciarBackup'));
+const tags = ['Backup'];
 
-  // GET /backup — situação atual (último backup, se está atrasado, lista recente)
-  app.get('/', async () => service.statusBackup());
+export const backupRoutes: FastifyPluginAsyncZod = async (app) => {
+  // O backup é a cópia de tudo: só o Dono vê, gera e baixa.
+  app.addHook('onRequest', exigir('gerenciarBackup'));
 
-  // POST /backup — gera uma cópia agora ("Fazer backup agora")
-  app.post('/', async (req, reply) => {
+  // GET /api/backup — situação atual (último backup, se está atrasado, lista recente)
+  app.get('/', { schema: { tags } }, () => service.statusBackup());
+
+  // POST /api/backup — gera uma cópia agora ("Fazer backup agora")
+  app.post('/', { schema: { tags } }, async (req, reply) => {
     const feito = await service.gerarBackup();
-    req.log.info(`Backup manual gerado por ${req.user.nome}: ${feito.arquivo}`);
+    req.log.info(`Backup manual gerado por ${req.usuario.nome}: ${feito.arquivo}`);
     return reply.code(201).send(feito);
   });
-}
+
+  // GET /api/backup/:arquivo — baixa a cópia (para guardar fora do PC da oficina)
+  app.get(
+    '/:arquivo',
+    { schema: { tags, params: z.object({ arquivo: z.string().min(1) }) } },
+    async (req, reply) => {
+      const { stream, bytes } = await service.abrirArquivo(req.params.arquivo);
+      return reply
+        .header('Content-Type', req.params.arquivo.endsWith('.enc') ? 'application/octet-stream' : 'application/sql; charset=utf-8')
+        .header('Content-Length', bytes)
+        .header('Content-Disposition', `attachment; filename="${req.params.arquivo}"`)
+        .send(stream);
+    },
+  );
+};

@@ -1,57 +1,38 @@
-import type { FastifyInstance } from 'fastify';
-import { authenticate, requirePermission } from '../../lib/auth.js';
-import { createDespesaSchema, updateDespesaSchema } from './despesas.schema.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { criarDespesaSchema, despesaSchema, idParams, listarDespesasQuery, pagarDespesaSchema } from '@hermes/shared/schemas';
+import { exigir } from '../../plugins/autenticacao.js';
 import * as service from './despesas.service.js';
 
-export async function despesasRoutes(app: FastifyInstance) {
-  // Despesas são financeiro: só o perfil que vê o financeiro (Dono) acessa.
-  app.addHook('preHandler', authenticate);
-  app.addHook('preHandler', requirePermission('verFinanceiro'));
+const tags = ['Despesas'];
 
-  // GET /despesas?de=&ate=&categoria= — lista + totais (total, pago, a pagar)
-  app.get('/', async (req) => {
-    const { de, ate, categoria } = req.query as { de?: string; ate?: string; categoria?: string };
-    return service.listDespesas(de, ate, categoria);
-  });
+export const despesasRoutes: FastifyPluginAsyncZod = async (app) => {
+  // Despesas são financeiro: só quem vê o financeiro (Dono).
+  app.addHook('onRequest', exigir('verFinanceiro'));
 
-  // GET /despesas/:id
-  app.get('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const despesa = await service.getDespesa(id);
-    if (!despesa) return reply.code(404).send({ message: 'Despesa não encontrada' });
-    return despesa;
-  });
+  app.get('/', { schema: { tags, querystring: listarDespesasQuery } }, (req) => service.listar(req.query));
+  app.get('/categorias', { schema: { tags } }, () => service.categorias());
+  app.get('/:id', { schema: { tags, params: idParams } }, (req) => service.buscar(req.params.id));
 
-  // POST /despesas — cadastra (se já vier paga, lança a saída no caixa)
-  app.post('/', async (req, reply) => {
-    const parsed = createDespesaSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    const despesa = await service.createDespesa(parsed.data, req.user.sub);
-    return reply.code(201).send(despesa);
-  });
+  // POST /api/despesas — cadastra (se já vier paga, a saída vai para o caixa)
+  app.post('/', { schema: { tags, body: criarDespesaSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criar(req.body, req.usuario)),
+  );
 
-  // PATCH /despesas/:id/pagar — marca como paga e lança saída no caixa (RN-12)
-  app.patch('/:id/pagar', async (req) => {
-    const { id } = req.params as { id: string };
-    return service.pagarDespesa(id, req.user.sub);
-  });
+  // POST /api/despesas/:id/pagar — RN-12: paga e lança a saída no caixa
+  app.post('/:id/pagar', { schema: { tags, params: idParams, body: pagarDespesaSchema } }, (req) =>
+    service.pagar(req.params.id, req.body, req.usuario),
+  );
 
-  // PUT /despesas/:id — edição (não mexe em "pago")
-  app.put('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = updateDespesaSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return service.updateDespesa(id, parsed.data);
-  });
+  // POST /api/despesas/:id/proximo-mes — conta fixa: lança a do mês seguinte
+  app.post('/:id/proximo-mes', { schema: { tags, params: idParams } }, async (req, reply) =>
+    reply.code(201).send(await service.repetirNoProximoMes(req.params.id)),
+  );
 
-  // DELETE /despesas/:id — só despesas ainda não pagas
-  app.delete('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    await service.deleteDespesa(id);
+  app.put('/:id', { schema: { tags, params: idParams, body: despesaSchema } }, (req) =>
+    service.atualizar(req.params.id, req.body),
+  );
+  app.delete('/:id', { schema: { tags, params: idParams } }, async (req, reply) => {
+    await service.excluir(req.params.id);
     return reply.code(204).send();
   });
-}
+};

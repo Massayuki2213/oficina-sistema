@@ -1,15 +1,31 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
+import type { Prisma } from '@prisma/client';
+import type { MudancaDTO } from '@hermes/shared';
 import { prisma } from './prisma.js';
+import { alvoDaRota, compararRetratos, tirarRetrato, type AlvoDoRetrato } from './retratos.js';
 
 // ============================================================
 // Log de auditoria — "quem fez o quê e quando" (seção 2 do
 // PLANEJAMENTO.md). Resolve o clássico "quem apagou isso?".
 //
 // A gravação é um hook global, e não uma chamada espalhada por
-// cada service. O motivo é cobertura: com 17 módulos, alguém vai
-// esquecer de chamar em algum lugar — e um log com buraco é pior
-// que não ter log, porque dá uma falsa sensação de rastreio.
+// cada service. O motivo é cobertura: com dezenas de rotas, alguém
+// vai esquecer de chamar em algum lugar — e um log com buraco é
+// pior que não ter log, porque dá uma falsa sensação de rastreio.
 // ============================================================
+
+declare module 'fastify' {
+  interface FastifyContextConfig {
+    /** Nome da ação no log quando o derivado da rota não diz o suficiente. */
+    acao?: string;
+    /** false: a rota não é auditada pelo hook (registra por conta própria). */
+    auditar?: boolean;
+  }
+  interface FastifyRequest {
+    /** Retrato do registro antes da alteração (ver lib/retratos.ts). */
+    retratoAntes?: { alvo: AlvoDoRetrato; antes: Record<string, unknown> | null };
+  }
+}
 
 /** Campos que nunca podem entrar no log, em qualquer nível do corpo. */
 const SENSIVEIS = new Set([
@@ -22,8 +38,14 @@ const SENSIVEIS = new Set([
   'token',
 ]);
 
-/** Rotas que não são alteração de negócio (ou que se auditam sozinhas). */
-const IGNORADAS = [/^\/auth\/login\b/, /^\/health\b/];
+/** Campos grandes demais para o log e sem valor de rastreio. */
+const VOLUMOSOS = new Set(['logo']);
+
+/**
+ * Dado pessoal de contato: o log registra que foi informado, não o valor
+ * (LGPD — minimização; e a anonimização de um cliente não deixa rastro aqui).
+ */
+const PESSOAIS = new Set(['cpfcnpj', 'telefone', 'whatsapp', 'endereco', 'contatotelefone']);
 
 const ACAO_POR_METODO: Record<string, string> = {
   POST: 'CRIAR',
@@ -32,13 +54,8 @@ const ACAO_POR_METODO: Record<string, string> = {
   DELETE: 'EXCLUIR',
 };
 
-/** Um cuid tem 25 chars e começa com 'c'; ids numéricos também são id. */
-function pareceId(seg: string) {
-  return /^c[a-z0-9]{20,}$/i.test(seg) || /^\d+$/.test(seg);
-}
-
 /**
- * Troca o valor dos campos sensíveis por '***' e devolve o corpo em texto.
+ * Troca o valor dos campos sensíveis por '***' e devolve o corpo limpo.
  * Percorre objetos e listas aninhados — senha não pode vazar em nenhum nível.
  */
 function limpar(valor: unknown, profundidade = 0): unknown {
@@ -47,7 +64,11 @@ function limpar(valor: unknown, profundidade = 0): unknown {
 
   const saida: Record<string, unknown> = {};
   for (const [chave, v] of Object.entries(valor as Record<string, unknown>)) {
-    saida[chave] = SENSIVEIS.has(chave.toLowerCase()) ? '***' : limpar(v, profundidade + 1);
+    const k = chave.toLowerCase();
+    if (SENSIVEIS.has(k)) saida[chave] = '***';
+    else if (VOLUMOSOS.has(k)) saida[chave] = v ? '[imagem]' : v;
+    else if (PESSOAIS.has(k)) saida[chave] = v ? '(dado pessoal)' : v;
+    else saida[chave] = limpar(v, profundidade + 1);
   }
   return saida;
 }
@@ -64,26 +85,38 @@ export function resumirCorpo(body: unknown): string | null {
 }
 
 /**
- * Lê a rota e extrai o que aconteceu.
- * `/clientes/abc123`             → EXCLUIR  clientes  abc123
- * `/orcamentos/abc123/aprovar`   → APROVAR  orcamentos abc123
- * `/compras/acerto/abc123`       → ACERTO   compras   abc123
+ * Lê a rota registrada (o padrão, não a URL) e extrai o que aconteceu.
+ * `/api/clientes/:id`            DELETE → EXCLUIR  clientes   :id
+ * `/api/orcamentos/:id/aprovar`  POST   → APROVAR  orcamentos :id
+ * `/api/compras/acerto/:fornecedorId`   → ACERTO   compras    :fornecedorId
  */
-export function descreverRota(metodo: string, url: string) {
-  const caminho = url.split('?')[0];
-  const partes = caminho.split('/').filter(Boolean);
-
+export function descreverRota(metodo: string, rota: string, params: Record<string, string> = {}, acaoConfigurada?: string) {
+  const partes = rota
+    .replace(/^\/api(?=\/|$)/, '')
+    .split('/')
+    .filter(Boolean);
   const entidade = partes[0] ?? 'desconhecido';
 
-  // O id pode não vir logo depois da entidade: em /compras/acerto/:fornecedorId
-  // ele é o terceiro segmento. Por isso procura o id em qualquer posição.
-  const entidadeId = partes.slice(1).filter(pareceId).pop() ?? null;
+  // O id principal é o :id; em rotas como /acerto/:fornecedorId, o único parâmetro.
+  const entidadeId = params.id ?? Object.values(params)[0] ?? null;
 
-  // Último segmento que não é id vira a ação (aprovar, receber, pagar, status...).
-  const sufixo = partes.slice(1).filter((p) => !pareceId(p)).pop();
-  const acao = sufixo ? sufixo.toUpperCase().replace(/-/g, '_') : (ACAO_POR_METODO[metodo] ?? metodo);
+  // Último segmento fixo depois da entidade vira a ação (aprovar, receber, status...).
+  const fixos = partes.slice(1).filter((p) => !p.startsWith(':'));
+  const sufixo = fixos[fixos.length - 1];
+  const acao = acaoConfigurada ?? (sufixo ? sufixo.toUpperCase().replace(/-/g, '_') : (ACAO_POR_METODO[metodo] ?? metodo));
 
   return { entidade, entidadeId, acao };
+}
+
+/** O `id` de uma resposta JSON de criação ({ id, ... }), se houver. */
+function idDaResposta(payload: unknown): string | null {
+  if (typeof payload !== 'string' || !payload.startsWith('{')) return null;
+  try {
+    const corpo = JSON.parse(payload) as { id?: unknown };
+    return typeof corpo.id === 'string' ? corpo.id : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -91,7 +124,14 @@ export function descreverRota(metodo: string, url: string) {
  * de negócio que ela está observando. Falha vira aviso no log da aplicação.
  */
 export async function registrar(
-  dados: { usuarioId?: string | null; acao: string; entidade: string; entidadeId?: string | null; detalhes?: string | null },
+  dados: {
+    usuarioId?: string | null;
+    acao: string;
+    entidade: string;
+    entidadeId?: string | null;
+    detalhes?: string | null;
+    mudancas?: MudancaDTO[] | null;
+  },
   aviso?: (msg: string) => void,
 ) {
   try {
@@ -102,6 +142,7 @@ export async function registrar(
         entidade: dados.entidade,
         entidadeId: dados.entidadeId ?? null,
         detalhes: dados.detalhes ?? null,
+        ...(dados.mudancas?.length ? { mudancas: dados.mudancas as unknown as Prisma.InputJsonValue } : {}),
       },
     });
   } catch (err) {
@@ -124,15 +165,49 @@ export async function registrarLogin(usuarioId: string | null, email: string, ok
  * barrada por permissão não é fato consumado, e encheria o log de ruído.
  */
 export function plugarAuditoria(app: FastifyInstance) {
-  app.addHook('onResponse', async (req: FastifyRequest, reply) => {
-    if (!ACAO_POR_METODO[req.method]) return;
-    if (reply.statusCode >= 300) return;
-    if (IGNORADAS.some((r) => r.test(req.url))) return;
+  const auditavel = (req: { method: string; routeOptions: { config?: { auditar?: boolean }; url?: string } }) =>
+    !!ACAO_POR_METODO[req.method] && req.routeOptions.config?.auditar !== false && !!req.routeOptions.url?.startsWith('/api/');
 
-    const { entidade, entidadeId, acao } = descreverRota(req.method, req.url);
+  // Antes da alteração (já autenticada e validada): o retrato do registro,
+  // para o log mostrar o valor anterior. Falhar aqui não barra a operação.
+  app.addHook('preHandler', async (req) => {
+    if (!auditavel(req)) return;
+    const alvo = alvoDaRota(req.routeOptions.url!, (req.params ?? {}) as Record<string, string>);
+    if (!alvo) return;
+    try {
+      req.retratoAntes = { alvo, antes: await tirarRetrato(alvo) };
+    } catch (err) {
+      req.log.warn(`Auditoria: não tirei o retrato de ${alvo.chave}: ${(err as Error).message}`);
+    }
+  });
+
+  // onSend, e não onResponse: o log é gravado ANTES da resposta sair. Quem
+  // recebeu "ok" já encontra a alteração no Histórico (e os testes também).
+  app.addHook('onSend', async (req, reply, payload) => {
+    // Resposta repetida pela idempotência: o fato já foi registrado na primeira vez.
+    if (!auditavel(req) || reply.statusCode >= 300 || req.respostaRepetida) return payload;
+
+    const config = req.routeOptions.config;
+    const rota = descreverRota(req.method, req.routeOptions.url!, (req.params ?? {}) as Record<string, string>, config?.acao);
+    const { entidade, acao } = rota;
+    // Criação não tem :id na rota — o id do registro novo vem na resposta. Sem
+    // ele, o log do cadastro ficaria solto (e a anonimização não o acharia).
+    const entidadeId = rota.entidadeId ?? (req.method === 'POST' ? idDaResposta(payload) : null);
+
+    let mudancas: MudancaDTO[] | null = null;
+    if (req.retratoAntes) {
+      const { alvo, antes } = req.retratoAntes;
+      try {
+        mudancas = compararRetratos(alvo.chave, antes, await tirarRetrato(alvo));
+      } catch (err) {
+        req.log.warn(`Auditoria: não comparei ${alvo.chave}: ${(err as Error).message}`);
+      }
+    }
+
     await registrar(
-      { usuarioId: req.user?.sub ?? null, acao, entidade, entidadeId, detalhes: resumirCorpo(req.body) },
+      { usuarioId: req.usuario?.id ?? null, acao, entidade, entidadeId, detalhes: resumirCorpo(req.body), mudancas },
       (msg) => req.log.warn(msg),
     );
+    return payload;
   });
 }

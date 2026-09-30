@@ -1,89 +1,56 @@
-import type { FastifyInstance } from 'fastify';
-import { pode } from '@hermes/shared';
-import { authenticate, requirePermission } from '../../lib/auth.js';
-import { createOrcamentoSchema, statusOrcamentoSchema, aprovarSchema, identificarSchema } from './orcamentos.schema.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import {
+  aprovarOrcamentoSchema,
+  identificarOrcamentoSchema,
+  idParams,
+  listarOrcamentosQuery,
+  orcamentoSchema,
+  statusOrcamentoSchema,
+} from '@hermes/shared/schemas';
+import { exigir } from '../../plugins/autenticacao.js';
 import * as service from './orcamentos.service.js';
 
-export async function orcamentosRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', authenticate);
+const tags = ['Orçamentos'];
 
-  // GET /orcamentos?busca= — lista por cliente ou placa
-  app.get('/', async (req) => service.listOrcamentos((req.query as { busca?: string }).busca));
+export const orcamentosRoutes: FastifyPluginAsyncZod = async (app) => {
+  // Orçamento é trabalho de balcão (PLANEJAMENTO, seção 2).
+  app.addHook('onRequest', exigir('atender'));
 
-  // GET /orcamentos/:id — detalhe com itens, cliente e veículo
-  app.get('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const orc = await service.getOrcamento(id);
-    if (!orc) return reply.code(404).send({ message: 'Orçamento não encontrado' });
-    return orc;
-  });
+  app.get('/', { schema: { tags, querystring: listarOrcamentosQuery } }, (req) => service.listar(req.query));
 
-  // POST /orcamentos — cria o orçamento com serviços e peças
-  app.post('/', async (req, reply) => {
-    const parsed = createOrcamentoSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    // RN-08: dar desconto exige permissão (Mecânico não pode).
-    if (parsed.data.desconto > 0 && !pode(req.user.perfil, 'darDesconto')) {
-      return reply.code(403).send({ message: 'Seu perfil não pode aplicar desconto' });
-    }
-    const orcamento = await service.createOrcamento(parsed.data);
-    return reply.code(201).send(orcamento);
-  });
+  app.get('/:id', { schema: { tags, params: idParams } }, (req) => service.buscar(req.params.id));
 
-  // PUT /orcamentos/:id — corrige o orçamento (enquanto não virou OS)
-  app.put('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = createOrcamentoSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    // RN-08: dar desconto exige permissão (Mecânico não pode).
-    if (parsed.data.desconto > 0 && !pode(req.user.perfil, 'darDesconto')) {
-      return reply.code(403).send({ message: 'Seu perfil não pode aplicar desconto' });
-    }
-    return service.updateOrcamento(id, parsed.data);
-  });
+  app.post('/', { schema: { tags, body: orcamentoSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criar(req.body, req.usuario)),
+  );
 
-  // DELETE /orcamentos/:id — apaga o orçamento. Só quem pode apagar registros (Dono).
-  app.delete('/:id', { preHandler: [requirePermission('apagarRegistros')] }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    await service.deleteOrcamento(id);
+  // PUT /api/orcamentos/:id — corrige enquanto não virou OS (renova a validade).
+  app.put('/:id', { schema: { tags, params: idParams, body: orcamentoSchema } }, (req) =>
+    service.atualizar(req.params.id, req.body, req.usuario),
+  );
+
+  app.delete('/:id', { onRequest: exigir('apagarRegistros'), schema: { tags, params: idParams } }, async (req, reply) => {
+    await service.excluir(req.params.id);
     return reply.code(204).send();
   });
 
-  // PATCH /orcamentos/:id/status — enviar / recusar / marcar rascunho
-  app.patch('/:id/status', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = statusOrcamentoSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return service.alterarStatus(id, parsed.data.status);
-  });
+  // PATCH /api/orcamentos/:id/status — enviado / recusado / de volta a rascunho.
+  app.patch('/:id/status', { schema: { tags, params: idParams, body: statusOrcamentoSchema } }, (req) =>
+    service.alterarStatus(req.params.id, req.body.status),
+  );
 
-  // PATCH /orcamentos/:id/identificar — orçamento rápido ganha cliente e veículo
-  app.patch('/:id/identificar', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = identificarSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return service.identificarOrcamento(id, parsed.data.clienteId, parsed.data.carroId);
-  });
+  // PATCH /api/orcamentos/:id/identificar — o orçamento rápido ganha cliente e veículo.
+  app.patch('/:id/identificar', { schema: { tags, params: idParams, body: identificarOrcamentoSchema } }, (req) =>
+    service.identificar(req.params.id, req.body.clienteId, req.body.carroId),
+  );
 
-  // POST /orcamentos/:id/aprovar — RN-07: aprova e gera a OS em 1 clique
-  app.post('/:id/aprovar', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = aprovarSchema.safeParse(req.body ?? {});
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    const resultado = await service.aprovarParaOS(id, parsed.data.mecanicoId, {
-      clienteId: parsed.data.clienteId,
-      carroId: parsed.data.carroId,
-    });
-    return reply.code(201).send(resultado);
-  });
-}
+  // POST /api/orcamentos/:id/duplicar — "refazer com os preços de hoje".
+  app.post('/:id/duplicar', { schema: { tags, params: idParams } }, async (req, reply) =>
+    reply.code(201).send(await service.duplicar(req.params.id, req.usuario)),
+  );
+
+  // POST /api/orcamentos/:id/aprovar — RN-07: aprova e gera a OS em 1 clique.
+  app.post('/:id/aprovar', { schema: { tags, params: idParams, body: aprovarOrcamentoSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.aprovar(req.params.id, req.body, req.usuario)),
+  );
+};

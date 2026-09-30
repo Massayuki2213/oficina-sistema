@@ -1,84 +1,34 @@
-import type { FastifyInstance } from 'fastify';
-import { Prisma } from '@prisma/client';
-import { authenticate, requirePermission } from '../../lib/auth.js';
-import { createCarroSchema, updateCarroSchema } from './carros.schema.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import { carroSchema, idParams, listarCarrosQuery } from '@hermes/shared/schemas';
+import { exigir } from '../../plugins/autenticacao.js';
 import * as service from './carros.service.js';
 
-function isNotFound(err: unknown) {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
-}
-function isDuplicate(err: unknown) {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
-}
-// Falha de chave estrangeira: clienteId aponta para um cliente que não existe.
-function isBadCliente(err: unknown) {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003';
-}
+const tags = ['Veículos'];
 
-export async function carrosRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', authenticate);
+export const carrosRoutes: FastifyPluginAsyncZod = async (app) => {
+  const balcao = { onRequest: exigir('cadastrarClientes') };
 
-  // GET /carros?busca=texto — lista/busca por placa, marca, modelo ou dono
-  app.get('/', async (req) => service.listCarros((req.query as { busca?: string }).busca));
+  app.get('/', { ...balcao, schema: { tags, querystring: listarCarrosQuery } }, (req) => service.listar(req.query));
 
-  // GET /carros/placa/:placa — RN-16: acha o carro pela placa e traz o histórico.
-  // 404 sinaliza para o front abrir o cadastro do veículo.
-  app.get('/placa/:placa', async (req, reply) => {
-    const { placa } = req.params as { placa: string };
-    const carro = await service.buscarPorPlaca(placa);
-    if (!carro) return reply.code(404).send({ message: 'Veículo não encontrado', placa });
-    return carro;
+  // GET /api/carros/placa/:placa — RN-16: todo perfil consulta (o mecânico
+  // também quer saber "já mexemos nisso?"). 404 = placa sem cadastro.
+  app.get('/placa/:placa', { schema: { tags, params: z.object({ placa: z.string().min(1) }) } }, (req) =>
+    service.fichaPorPlaca(req.params.placa, req.usuario),
+  );
+
+  app.get('/:id', { schema: { tags, params: idParams } }, (req) => service.ficha(req.params.id, req.usuario));
+
+  app.post('/', { ...balcao, schema: { tags, body: carroSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criar(req.body)),
+  );
+
+  app.put('/:id', { ...balcao, schema: { tags, params: idParams, body: carroSchema } }, (req) =>
+    service.atualizar(req.params.id, req.body),
+  );
+
+  app.delete('/:id', { onRequest: exigir('apagarRegistros'), schema: { tags, params: idParams } }, async (req, reply) => {
+    await service.inativar(req.params.id);
+    return reply.code(204).send();
   });
-
-  // GET /carros/:id — detalhe com dono e histórico completo
-  app.get('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const carro = await service.getCarro(id);
-    if (!carro) return reply.code(404).send({ message: 'Veículo não encontrado' });
-    return carro;
-  });
-
-  // POST /carros — cadastro (vinculado a um cliente)
-  app.post('/', async (req, reply) => {
-    const parsed = createCarroSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    try {
-      const carro = await service.createCarro(parsed.data);
-      return reply.code(201).send(carro);
-    } catch (err) {
-      if (isDuplicate(err)) return reply.code(409).send({ message: 'Já existe um veículo com essa placa' });
-      if (isBadCliente(err)) return reply.code(400).send({ message: 'Cliente informado não existe' });
-      throw err;
-    }
-  });
-
-  // PUT /carros/:id — edição
-  app.put('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = updateCarroSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    try {
-      return await service.updateCarro(id, parsed.data);
-    } catch (err) {
-      if (isNotFound(err)) return reply.code(404).send({ message: 'Veículo não encontrado' });
-      if (isDuplicate(err)) return reply.code(409).send({ message: 'Já existe um veículo com essa placa' });
-      throw err;
-    }
-  });
-
-  // DELETE /carros/:id — inativa (soft delete). Só quem pode apagar registros (Dono).
-  app.delete('/:id', { preHandler: [requirePermission('apagarRegistros')] }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    try {
-      await service.deactivateCarro(id);
-      return reply.code(204).send();
-    } catch (err) {
-      if (isNotFound(err)) return reply.code(404).send({ message: 'Veículo não encontrado' });
-      throw err;
-    }
-  });
-}
+};

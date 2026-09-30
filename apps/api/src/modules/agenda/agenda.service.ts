@@ -1,18 +1,30 @@
-import type { StatusVisita } from '@prisma/client';
+import type { Prisma, StatusVisita } from '@prisma/client';
+import type { z } from 'zod';
+import type { VisitaDTO } from '@hermes/shared';
+import type { atualizarVisitaSchema, listarAgendaQuery, visitaSchema } from '@hermes/shared/schemas';
 import { prisma } from '../../lib/prisma.js';
-import { AppError } from '../../lib/errors.js';
-import type { CreateVisitaInput, UpdateVisitaInput } from './agenda.schema.js';
+import { COD, conflito, invalido, naoEncontrado } from '../../lib/errors.js';
+import { falhaDeVersao, naVersao, proximaVersao } from '../../lib/versao.js';
+import { intervalo } from '../../lib/datas.js';
 
-const includeRel = {
-  cliente: { select: { id: true, nome: true, telefone: true } },
+const incluirRel = {
+  cliente: { select: { id: true, nome: true, telefone: true, whatsapp: true } },
   carro: { select: { id: true, placa: true, modelo: true } },
-} as const;
+} satisfies Prisma.VisitaInclude;
 
-function intervalo(de?: string, ate?: string) {
-  const gte = de ? new Date(de + 'T00:00:00') : undefined;
-  const lte = ate ? new Date(ate + 'T23:59:59.999') : undefined;
-  if (!gte && !lte) return {};
-  return { dataHora: { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) } };
+type VisitaCompleta = Prisma.VisitaGetPayload<{ include: typeof incluirRel }>;
+
+function paraDTO(v: VisitaCompleta): VisitaDTO {
+  return {
+    id: v.id,
+    versao: v.versao,
+    dataHora: v.dataHora.toISOString(),
+    tipo: v.tipo,
+    status: v.status,
+    observacoes: v.observacoes,
+    cliente: v.cliente,
+    carro: v.carro,
+  };
 }
 
 /**
@@ -31,7 +43,7 @@ async function buscarConflitos(dataHora: Date, ignorarId?: string) {
       status: { in: ['AGENDADA', 'CONFIRMADA'] },
       dataHora: { gte: new Date(dataHora.getTime() - margem), lte: new Date(dataHora.getTime() + margem) },
     },
-    include: includeRel,
+    include: incluirRel,
     orderBy: { dataHora: 'asc' },
   });
 }
@@ -47,78 +59,78 @@ async function checarConflito(dataHora: Date, ignorarConflito: boolean, ignorarI
   if (conflitos.length === 0) return;
 
   const hora = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  const lista = conflitos
-    .map((c) => `${hora(c.dataHora)} — ${c.cliente.nome}${c.carro ? ` (${c.carro.placa})` : ''}`)
-    .join('; ');
-
-  throw new AppError(409, `Já existe agendamento nesse horário: ${lista}. Confirme se quer encaixar mesmo assim.`);
+  const lista = conflitos.map((c) => `${hora(c.dataHora)} — ${c.cliente.nome}${c.carro ? ` (${c.carro.placa})` : ''}`).join('; ');
+  throw conflito(
+    `Já existe agendamento nesse horário: ${lista}. Confirme se quer encaixar mesmo assim.`,
+    COD.CONFLITO_AGENDA,
+    conflitos.map(paraDTO),
+  );
 }
 
-async function validarCarroDoCliente(clienteId: string, carroId?: string) {
+async function validarCarroDoCliente(clienteId: string, carroId?: string | null) {
   if (!carroId) return;
-  const carro = await prisma.carro.findUnique({ where: { id: carroId } });
-  if (!carro) throw new AppError(400, 'Veículo não encontrado');
-  if (carro.clienteId !== clienteId) throw new AppError(400, 'O veículo não pertence a esse cliente');
+  const carro = await prisma.carro.findUnique({ where: { id: carroId }, select: { clienteId: true } });
+  if (!carro) throw invalido('Veículo não encontrado');
+  if (carro.clienteId !== clienteId) throw invalido('O veículo não pertence a esse cliente');
 }
 
-// Lista os agendamentos do período (ordenados pela data/hora), com cliente e veículo.
-export function listVisitas(de?: string, ate?: string, status?: StatusVisita) {
-  return prisma.visita.findMany({
-    where: { ...intervalo(de, ate), ...(status ? { status } : {}) },
+export async function listar(q: z.output<typeof listarAgendaQuery>): Promise<VisitaDTO[]> {
+  const periodo = intervalo(q.de, q.ate);
+  const visitas = await prisma.visita.findMany({
+    where: { ...(periodo ? { dataHora: periodo } : {}), ...(q.status ? { status: q.status } : {}) },
     orderBy: { dataHora: 'asc' },
-    include: includeRel,
+    include: incluirRel,
+    take: 500,
   });
+  return visitas.map(paraDTO);
 }
 
-export async function createVisita(input: CreateVisitaInput) {
-  const cliente = await prisma.cliente.findUnique({ where: { id: input.clienteId } });
-  if (!cliente) throw new AppError(400, 'Cliente não encontrado');
-  await validarCarroDoCliente(input.clienteId, input.carroId);
-  await checarConflito(new Date(input.dataHora), input.ignorarConflito);
+export async function criar(dados: z.output<typeof visitaSchema>): Promise<VisitaDTO> {
+  const cliente = await prisma.cliente.findUnique({ where: { id: dados.clienteId }, select: { ativo: true } });
+  if (!cliente || !cliente.ativo) throw invalido('Cliente não encontrado');
+  await validarCarroDoCliente(dados.clienteId, dados.carroId);
+  const dataHora = new Date(dados.dataHora);
+  await checarConflito(dataHora, dados.ignorarConflito);
 
-  return prisma.visita.create({
+  const v = await prisma.visita.create({
     data: {
-      clienteId: input.clienteId,
-      carroId: input.carroId ?? null,
-      dataHora: new Date(input.dataHora),
-      tipo: input.tipo,
-      observacoes: input.observacoes ?? null,
+      clienteId: dados.clienteId,
+      carroId: dados.carroId ?? null,
+      dataHora,
+      tipo: dados.tipo,
+      observacoes: dados.observacoes ?? null,
     },
-    include: includeRel,
+    include: incluirRel,
   });
+  return paraDTO(v);
 }
 
-export async function alterarStatus(id: string, status: StatusVisita) {
-  try {
-    return await prisma.visita.update({ where: { id }, data: { status }, include: includeRel });
-  } catch {
-    throw new AppError(404, 'Agendamento não encontrado');
-  }
+export async function alterarStatus(id: string, status: StatusVisita): Promise<VisitaDTO> {
+  const v = await prisma.visita.update({ where: { id }, data: { status }, include: incluirRel });
+  return paraDTO(v);
 }
 
-export async function updateVisita(id: string, input: UpdateVisitaInput) {
+/** Remarcar / editar. O novo horário também passa pela checagem de conflito (RN-19). */
+export async function atualizar(id: string, dados: z.output<typeof atualizarVisitaSchema>): Promise<VisitaDTO> {
   const visita = await prisma.visita.findUnique({ where: { id } });
-  if (!visita) throw new AppError(404, 'Agendamento não encontrado');
-  await validarCarroDoCliente(visita.clienteId, input.carroId ?? undefined);
-  // Remarcar também confere o novo horário (RN-19), ignorando o próprio registro.
-  if (input.dataHora) await checarConflito(new Date(input.dataHora), input.ignorarConflito, id);
+  if (!visita) throw naoEncontrado('Agendamento não encontrado');
+  await validarCarroDoCliente(visita.clienteId, dados.carroId);
+  if (dados.dataHora) await checarConflito(new Date(dados.dataHora), dados.ignorarConflito, id);
 
-  return prisma.visita.update({
-    where: { id },
+  const r = await prisma.visita.updateMany({
+    where: { id, ...naVersao(dados.versao) },
     data: {
-      ...(input.carroId !== undefined ? { carroId: input.carroId ?? null } : {}),
-      ...(input.dataHora ? { dataHora: new Date(input.dataHora) } : {}),
-      ...(input.tipo ? { tipo: input.tipo } : {}),
-      ...(input.observacoes !== undefined ? { observacoes: input.observacoes ?? null } : {}),
+      ...(dados.carroId !== undefined ? { carroId: dados.carroId } : {}),
+      ...(dados.dataHora ? { dataHora: new Date(dados.dataHora) } : {}),
+      ...(dados.tipo ? { tipo: dados.tipo } : {}),
+      ...(dados.observacoes !== undefined ? { observacoes: dados.observacoes } : {}),
+      ...proximaVersao,
     },
-    include: includeRel,
   });
+  if (r.count === 0) await falhaDeVersao('agenda', id, true, 'Agendamento não encontrado');
+  return paraDTO(await prisma.visita.findUniqueOrThrow({ where: { id }, include: incluirRel }));
 }
 
-export async function deleteVisita(id: string) {
-  try {
-    await prisma.visita.delete({ where: { id } });
-  } catch {
-    throw new AppError(404, 'Agendamento não encontrado');
-  }
+export async function excluir(id: string) {
+  await prisma.visita.delete({ where: { id } });
 }

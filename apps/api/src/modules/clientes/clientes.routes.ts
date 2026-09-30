@@ -1,66 +1,42 @@
-import type { FastifyInstance } from 'fastify';
-import { Prisma } from '@prisma/client';
-import { authenticate, requirePermission } from '../../lib/auth.js';
-import { createClienteSchema, updateClienteSchema } from './clientes.schema.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { clienteSchema, idParams, listarClientesQuery } from '@hermes/shared/schemas';
+import { exigir } from '../../plugins/autenticacao.js';
 import * as service from './clientes.service.js';
 
-// Erro do Prisma para "registro não encontrado" no update/delete.
-function isNotFound(err: unknown) {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
-}
+const tags = ['Clientes'];
 
-export async function clientesRoutes(app: FastifyInstance) {
-  // Todos os endpoints de clientes exigem usuário autenticado.
-  app.addHook('preHandler', authenticate);
+export const clientesRoutes: FastifyPluginAsyncZod = async (app) => {
+  // Cadastro de cliente é do balcão. O mecânico vê o nome do cliente na OS,
+  // mas não precisa (nem deve, pela LGPD) navegar pelos contatos de todos.
+  app.addHook('onRequest', exigir('cadastrarClientes'));
 
-  // GET /clientes?busca=texto  — lista/busca (RN-16: busca puxa o cliente)
-  app.get('/', async (req) => {
-    const { busca } = req.query as { busca?: string };
-    return service.listClientes(busca);
+  // GET /api/clientes?busca=&pagina= — nome, CPF, telefone ou placa
+  app.get('/', { schema: { tags, querystring: listarClientesQuery } }, (req) => service.listar(req.query));
+
+  // GET /api/clientes/:id — ficha: veículos, OS, fiado
+  app.get('/:id', { schema: { tags, params: idParams } }, (req) => service.ficha(req.params.id));
+
+  app.post('/', { schema: { tags, body: clienteSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criar(req.body)),
+  );
+
+  app.put('/:id', { schema: { tags, params: idParams, body: clienteSchema } }, (req) =>
+    service.atualizar(req.params.id, req.body),
+  );
+
+  // DELETE /api/clientes/:id — inativa (o histórico fica). Só o Dono.
+  app.delete('/:id', { onRequest: exigir('apagarRegistros'), schema: { tags, params: idParams } }, async (req, reply) => {
+    await service.inativar(req.params.id);
+    return reply.code(204).send();
   });
 
-  // GET /clientes/:id — detalhe com veículos, histórico de OS e fiado
-  app.get('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const cliente = await service.getCliente(id);
-    if (!cliente) return reply.code(404).send({ message: 'Cliente não encontrado' });
-    return cliente;
-  });
-
-  // POST /clientes — cadastro
-  app.post('/', async (req, reply) => {
-    const parsed = createClienteSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    const cliente = await service.createCliente(parsed.data);
-    return reply.code(201).send(cliente);
-  });
-
-  // PUT /clientes/:id — edição
-  app.put('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = updateClienteSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    try {
-      return await service.updateCliente(id, parsed.data);
-    } catch (err) {
-      if (isNotFound(err)) return reply.code(404).send({ message: 'Cliente não encontrado' });
-      throw err;
-    }
-  });
-
-  // DELETE /clientes/:id — inativa (soft delete). Só quem pode apagar registros (Dono).
-  app.delete('/:id', { preHandler: [requirePermission('apagarRegistros')] }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    try {
-      await service.deactivateCliente(id);
+  // POST /api/clientes/:id/anonimizar — LGPD: apaga os dados pessoais. Só o Dono.
+  app.post(
+    '/:id/anonimizar',
+    { onRequest: exigir('apagarRegistros'), schema: { tags, params: idParams } },
+    async (req, reply) => {
+      await service.anonimizar(req.params.id);
       return reply.code(204).send();
-    } catch (err) {
-      if (isNotFound(err)) return reply.code(404).send({ message: 'Cliente não encontrado' });
-      throw err;
-    }
-  });
-}
+    },
+  );
+};

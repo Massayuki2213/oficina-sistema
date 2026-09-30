@@ -1,52 +1,27 @@
-import type { FastifyInstance } from 'fastify';
-import type { StatusVisita } from '@prisma/client';
-import { authenticate } from '../../lib/auth.js';
-import { createVisitaSchema, statusVisitaSchema, updateVisitaSchema } from './agenda.schema.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { atualizarVisitaSchema, idParams, listarAgendaQuery, statusVisitaSchema, visitaSchema } from '@hermes/shared/schemas';
+import { exigir } from '../../plugins/autenticacao.js';
 import * as service from './agenda.service.js';
 
-export async function agendaRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', authenticate);
+const tags = ['Agenda'];
 
-  // GET /agenda?de=YYYY-MM-DD&ate=YYYY-MM-DD&status= — agendamentos do período
-  app.get('/', async (req) => {
-    const { de, ate, status } = req.query as { de?: string; ate?: string; status?: StatusVisita };
-    return service.listVisitas(de, ate, status);
-  });
+export const agendaRoutes: FastifyPluginAsyncZod = async (app) => {
+  const balcao = { onRequest: exigir('atender') };
 
-  // POST /agenda — cria o agendamento (visita)
-  app.post('/', async (req, reply) => {
-    const parsed = createVisitaSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    const visita = await service.createVisita(parsed.data);
-    return reply.code(201).send(visita);
-  });
+  // Todo perfil vê a agenda (o mecânico se organiza por ela); marcar é do balcão.
+  app.get('/', { schema: { tags, querystring: listarAgendaQuery } }, (req) => service.listar(req.query));
 
-  // PATCH /agenda/:id/status — confirmar / marcar realizada / faltou
-  app.patch('/:id/status', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = statusVisitaSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return service.alterarStatus(id, parsed.data.status);
-  });
-
-  // PUT /agenda/:id — remarcar / editar (data, tipo, veículo, observações)
-  app.put('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = updateVisitaSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return service.updateVisita(id, parsed.data);
-  });
-
-  // DELETE /agenda/:id — cancela/remove o agendamento
-  app.delete('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    await service.deleteVisita(id);
+  app.post('/', { ...balcao, schema: { tags, body: visitaSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criar(req.body)),
+  );
+  app.put('/:id', { ...balcao, schema: { tags, params: idParams, body: atualizarVisitaSchema } }, (req) =>
+    service.atualizar(req.params.id, req.body),
+  );
+  app.patch('/:id/status', { ...balcao, schema: { tags, params: idParams, body: statusVisitaSchema } }, (req) =>
+    service.alterarStatus(req.params.id, req.body.status),
+  );
+  app.delete('/:id', { ...balcao, schema: { tags, params: idParams } }, async (req, reply) => {
+    await service.excluir(req.params.id);
     return reply.code(204).send();
   });
-}
+};

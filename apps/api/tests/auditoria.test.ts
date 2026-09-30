@@ -30,6 +30,19 @@ describe('auditoria — senha nunca chega ao log', () => {
     expect(saida).toContain('45.9');
   });
 
+  it('logo da oficina (imagem em base64) não entra inteiro no log', () => {
+    const saida = resumirCorpo({ nome: 'Oficina', logo: `data:image/png;base64,${'A'.repeat(5000)}` }) ?? '';
+    expect(saida).toContain('[imagem]');
+    expect(saida.length).toBeLessThan(200);
+  });
+
+  it('dado pessoal de contato não entra no log (LGPD), só que foi informado', () => {
+    const saida = resumirCorpo({ nome: 'Ana', cpfCnpj: '52998224725', telefone: '11999990000', whatsapp: '11988887777', endereco: 'Rua A, 1' }) ?? '';
+    expect(saida).not.toMatch(/52998224725|11999990000|11988887777|Rua A/);
+    expect(saida).toContain('(dado pessoal)');
+    expect(saida).toContain('Ana');
+  });
+
   it('corpo vazio não vira registro', () => {
     expect(resumirCorpo({})).toBeNull();
     expect(resumirCorpo(null)).toBeNull();
@@ -46,21 +59,27 @@ describe('auditoria — a rota vira a ação certa', () => {
   const ID = 'clx1234567890abcdefghij';
 
   it.each([
-    ['DELETE', `/clientes/${ID}`, 'clientes', ID, 'EXCLUIR'],
-    ['POST', '/clientes', 'clientes', null, 'CRIAR'],
-    ['PUT', `/pecas/${ID}`, 'pecas', ID, 'ALTERAR'],
-    ['POST', `/orcamentos/${ID}/aprovar`, 'orcamentos', ID, 'APROVAR'],
-    ['PATCH', `/orcamentos/${ID}/status`, 'orcamentos', ID, 'STATUS'],
-    ['POST', `/ordens/${ID}/receber`, 'ordens', ID, 'RECEBER'],
-    ['POST', `/ordens/${ID}/garantia`, 'ordens', ID, 'GARANTIA'],
-    ['PATCH', '/usuarios/minha-senha', 'usuarios', null, 'MINHA_SENHA'],
-    ['PATCH', `/usuarios/${ID}/ativo`, 'usuarios', ID, 'ATIVO'],
-    ['PATCH', `/compras/${ID}/pagar`, 'compras', ID, 'PAGAR'],
-    // O id nem sempre vem logo depois da entidade.
-    ['POST', `/compras/acerto/${ID}`, 'compras', ID, 'ACERTO'],
-    // Query string não pode virar parte da ação.
-    ['POST', `/contas-receber/${ID}/receber?x=1`, 'contas-receber', ID, 'RECEBER'],
-  ])('%s %s', (metodo, url, entidade, entidadeId, acao) => {
-    expect(descreverRota(metodo, url)).toEqual({ entidade, entidadeId, acao });
+    ['DELETE', '/api/clientes/:id', { id: ID }, 'clientes', ID, 'EXCLUIR'],
+    ['POST', '/api/clientes', {}, 'clientes', null, 'CRIAR'],
+    ['PUT', '/api/pecas/:id', { id: ID }, 'pecas', ID, 'ALTERAR'],
+    ['POST', '/api/orcamentos/:id/aprovar', { id: ID }, 'orcamentos', ID, 'APROVAR'],
+    ['PATCH', '/api/orcamentos/:id/status', { id: ID }, 'orcamentos', ID, 'STATUS'],
+    ['POST', '/api/ordens/:id/receber', { id: ID }, 'ordens', ID, 'RECEBER'],
+    ['POST', '/api/ordens/:id/estornar-pagamento', { id: ID }, 'ordens', ID, 'ESTORNAR_PAGAMENTO'],
+    ['PATCH', '/api/usuarios/minha-senha', {}, 'usuarios', null, 'MINHA_SENHA'],
+    ['PATCH', '/api/usuarios/:id/ativo', { id: ID }, 'usuarios', ID, 'ATIVO'],
+    // O id nem sempre é o :id — nem vem logo depois da entidade.
+    ['POST', '/api/compras/acerto/:fornecedorId', { fornecedorId: ID }, 'compras', ID, 'ACERTO'],
+    ['POST', '/api/contas-receber/:id/receber', { id: ID }, 'contas-receber', ID, 'RECEBER'],
+  ])('%s %s', (metodo, rota, params, entidade, entidadeId, acao) => {
+    expect(descreverRota(metodo, rota, params)).toEqual({ entidade, entidadeId, acao });
+  });
+
+  it('a ação configurada na rota tem prioridade (itens da OS)', () => {
+    expect(descreverRota('DELETE', '/api/ordens/:id/pecas/:itemId', { id: ID, itemId: 'x' }, 'REMOVER_PECA')).toEqual({
+      entidade: 'ordens',
+      entidadeId: ID,
+      acao: 'REMOVER_PECA',
+    });
   });
 });

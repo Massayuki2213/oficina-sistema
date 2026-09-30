@@ -1,90 +1,138 @@
 import type { Prisma } from '@prisma/client';
+import type { z } from 'zod';
+import type { CompraDTO, CompraResumoDTO, ContasAPagarDTO, ListaComprasDTO, UsuarioSessao } from '@hermes/shared';
+import type { compraSchema, listarComprasQuery, pagarCompraSchema } from '@hermes/shared/schemas';
 import { prisma } from '../../lib/prisma.js';
-import { redis } from '../../lib/redis.js';
-import { AppError } from '../../lib/errors.js';
-import { aplicarEntradaEstoque } from '../pecas/pecas.service.js';
-import type { CreateCompraInput } from './compras.schema.js';
+import { conflito, invalido, naoEncontrado } from '../../lib/errors.js';
+import { multiplicar, num, somar } from '../../lib/dinheiro.js';
+import { dataLocal, hojeISO, inicioDoDia, intervalo, isoOuNull } from '../../lib/datas.js';
+import { pagina, paginar } from '../../lib/paginacao.js';
+import { darEntrada, darSaida, calcularMargem } from '../../dominio/estoque.js';
+import { lancar } from '../../dominio/caixa.js';
 
-const num = (v: unknown) => Number(v);
-const round = (n: number) => Math.round(n * 100) / 100;
+// ============================================================
+// Compras do distribuidor (contas a pagar).
+// Os itens dão entrada no estoque ao registrar (e recalculam o custo
+// médio, RN-04); o dinheiro só sai do caixa quando a compra é paga —
+// regime de caixa, sem contar a peça duas vezes no lucro.
+// ============================================================
 
-const invalidarEstoque = () => redis.del('pecas:list'); // a compra deu entrada no estoque
-
-function toDTO(c: any) {
-  return {
-    ...c,
-    valorTotal: num(c.valorTotal),
-    itens: c.itens?.map((i: any) => ({
-      ...i,
-      custoUnit: num(i.custoUnit),
-      subtotal: round(num(i.custoUnit) * i.quantidade),
-      peca: i.peca ? { ...i.peca, precoCusto: num(i.peca.precoCusto), precoVenda: num(i.peca.precoVenda) } : undefined,
-    })),
-  };
-}
-
-const fullInclude = {
+const incluirResumo = {
   fornecedor: { select: { id: true, nome: true } },
-  itens: { include: { peca: { select: { id: true, nome: true, precoCusto: true, precoVenda: true, unidade: true } } } },
-} as const;
+  _count: { select: { itens: true } },
+} satisfies Prisma.CompraInclude;
 
-// Uma compra paga vira saída no livro-caixa (mesmo padrão da despesa paga, RN-12).
-function lancarSaidaNoCaixa(tx: Prisma.TransactionClient, descricao: string, valor: Prisma.Decimal | number, usuarioId?: string) {
-  return tx.lancamentoCaixa.create({
-    data: { tipo: 'SAIDA', origem: 'DESPESA', descricao, valor, categoria: 'Compra de peças', usuarioId },
-  });
-}
+const incluirCompleto = {
+  ...incluirResumo,
+  itens: { include: { peca: { select: { nome: true, unidade: true } } }, orderBy: { id: 'asc' } },
+} satisfies Prisma.CompraInclude;
 
-export async function listCompras(filtros: { de?: string; ate?: string; fornecedorId?: string; status?: 'PENDENTE' | 'PAGA' }) {
-  const gte = filtros.de ? new Date(filtros.de + 'T00:00:00') : undefined;
-  const lte = filtros.ate ? new Date(filtros.ate + 'T23:59:59.999') : undefined;
+type CompraResumo = Prisma.CompraGetPayload<{ include: typeof incluirResumo }>;
+type CompraCompleta = Prisma.CompraGetPayload<{ include: typeof incluirCompleto }>;
 
-  const compras = await prisma.compra.findMany({
-    where: {
-      ...(gte || lte ? { data: { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) } } : {}),
-      ...(filtros.fornecedorId ? { fornecedorId: filtros.fornecedorId } : {}),
-      ...(filtros.status ? { status: filtros.status } : {}),
-    },
-    orderBy: { data: 'desc' },
-    include: { fornecedor: { select: { id: true, nome: true } }, _count: { select: { itens: true } } },
-  });
-
-  const total = compras.reduce((s, c) => s + num(c.valorTotal), 0);
-  const aPagar = compras.filter((c) => c.status === 'PENDENTE').reduce((s, c) => s + num(c.valorTotal), 0);
+function paraResumo(c: CompraResumo, hoje = inicioDoDia()): CompraResumoDTO {
   return {
-    compras: compras.map((c) => ({ ...c, valorTotal: num(c.valorTotal) })),
-    totais: { total: round(total), aPagar: round(aPagar), pago: round(total - aPagar) },
+    id: c.id,
+    numero: c.numero,
+    data: c.data.toISOString(),
+    vencimento: isoOuNull(c.vencimento),
+    numeroNota: c.numeroNota,
+    valorTotal: num(c.valorTotal),
+    status: c.status,
+    pagoEm: isoOuNull(c.pagoEm),
+    fornecedor: c.fornecedor,
+    qtdItens: c._count.itens,
+    vencida: c.status === 'PENDENTE' && !!c.vencimento && c.vencimento < hoje,
   };
 }
 
-export async function getCompra(id: string) {
-  const compra = await prisma.compra.findUnique({ where: { id }, include: fullInclude });
-  return compra ? toDTO(compra) : null;
+function paraDTO(c: CompraCompleta): CompraDTO {
+  return {
+    ...paraResumo(c),
+    observacoes: c.observacoes,
+    formaPagamento: c.formaPagamento,
+    itens: c.itens.map((i) => {
+      const quantidade = num(i.quantidade);
+      const custoUnit = num(i.custoUnit);
+      return {
+        id: i.id,
+        pecaId: i.pecaId,
+        nome: i.peca.nome,
+        unidade: i.peca.unidade,
+        quantidade,
+        custoUnit,
+        subtotal: multiplicar(custoUnit, quantidade),
+      };
+    }),
+  };
 }
 
-export async function createCompra(input: CreateCompraInput, usuarioId?: string) {
-  const fornecedor = await prisma.fornecedor.findUnique({ where: { id: input.fornecedorId } });
-  if (!fornecedor) throw new AppError(400, 'Distribuidor não encontrado');
+export async function listar(q: z.output<typeof listarComprasQuery>): Promise<ListaComprasDTO> {
+  const periodo = intervalo(q.de, q.ate);
+  const where: Prisma.CompraWhereInput = {
+    ...(periodo ? { data: periodo } : {}),
+    ...(q.fornecedorId ? { fornecedorId: q.fornecedorId } : {}),
+    ...(q.status ? { status: q.status } : {}),
+    ...(q.busca
+      ? {
+          OR: [
+            { fornecedor: { nome: { contains: q.busca, mode: 'insensitive' } } },
+            { numeroNota: { contains: q.busca } },
+            ...(/^\d{1,7}$/.test(q.busca) ? [{ numero: Number(q.busca) }] : []),
+          ],
+        }
+      : {}),
+  };
+  const [itens, total, soma] = await Promise.all([
+    prisma.compra.findMany({ where, orderBy: { data: 'desc' }, include: incluirResumo, ...paginar(q) }),
+    prisma.compra.count({ where }),
+    prisma.compra.groupBy({ by: ['status'], where, _sum: { valorTotal: true } }),
+  ]);
+  const aPagar = num(soma.find((s) => s.status === 'PENDENTE')?._sum.valorTotal);
+  const pago = num(soma.find((s) => s.status === 'PAGA')?._sum.valorTotal);
+  const hoje = inicioDoDia();
+  return {
+    ...pagina(
+      itens.map((c) => paraResumo(c, hoje)),
+      total,
+      q,
+    ),
+    totais: { total: somar(aPagar, pago), aPagar, pago },
+  };
+}
 
-  const valorTotal = round(input.itens.reduce((s, i) => s + i.custoUnit * i.quantidade, 0));
-  const data = input.data ? new Date(input.data + 'T12:00:00') : undefined;
+export async function buscar(id: string): Promise<CompraDTO> {
+  const c = await prisma.compra.findUnique({ where: { id }, include: incluirCompleto });
+  if (!c) throw naoEncontrado('Compra não encontrada');
+  return paraDTO(c);
+}
 
-  const compra = await prisma.$transaction(async (tx) => {
-    const criada = await tx.compra.create({
+const dataInformada = (d?: string | null) => (d && d !== hojeISO() ? dataLocal(d) : undefined);
+
+export async function criar(dados: z.output<typeof compraSchema>, ator: UsuarioSessao): Promise<CompraDTO> {
+  const fornecedor = await prisma.fornecedor.findUnique({ where: { id: dados.fornecedorId } });
+  if (!fornecedor) throw invalido('Distribuidor não encontrado');
+  if (dados.pago && dados.vencimento) throw invalido('Compra paga à vista não tem vencimento');
+
+  const valorTotal = somar(...dados.itens.map((i) => multiplicar(i.custoUnit, i.quantidade)));
+
+  const id = await prisma.$transaction(async (tx) => {
+    const compra = await tx.compra.create({
       data: {
-        fornecedorId: input.fornecedorId,
-        numeroNota: input.numeroNota ?? null,
-        observacoes: input.observacoes ?? null,
+        fornecedorId: dados.fornecedorId,
+        numeroNota: dados.numeroNota ?? null,
+        observacoes: dados.observacoes ?? null,
         valorTotal,
-        status: input.pago ? 'PAGA' : 'PENDENTE',
-        pagoEm: input.pago ? new Date() : null,
-        ...(data ? { data } : {}),
+        status: dados.pago ? 'PAGA' : 'PENDENTE',
+        pagoEm: dados.pago ? new Date() : null,
+        formaPagamento: dados.pago ? (dados.formaPagamento ?? 'A_VISTA') : null,
+        vencimento: dados.vencimento ? dataLocal(dados.vencimento) : null,
+        ...(dataInformada(dados.data) ? { data: dataInformada(dados.data) } : {}),
       },
     });
 
-    for (const item of input.itens) {
-      // Peça nova nasce com o custo desta compra; a entrada de estoque logo
-      // abaixo recalcula a média (aqui ela ainda tem estoque 0).
+    for (const item of dados.itens) {
+      // Peça nova nasce zerada; a entrada logo abaixo põe o estoque e o custo.
       let pecaId = item.pecaId;
       if (!pecaId && item.pecaNova) {
         const nova = await tx.peca.create({
@@ -92,108 +140,145 @@ export async function createCompra(input: CreateCompraInput, usuarioId?: string)
             nome: item.pecaNova.nome,
             precoCusto: item.custoUnit,
             precoVenda: item.pecaNova.precoVenda,
-            fornecedorId: input.fornecedorId,
+            margemPct: calcularMargem(item.custoUnit, item.pecaNova.precoVenda),
+            unidade: item.pecaNova.unidade,
+            codigoBarras: item.pecaNova.codigoBarras ?? null,
+            fornecedorId: dados.fornecedorId,
           },
         });
         pecaId = nova.id;
       }
-      if (!pecaId) throw new AppError(400, 'Item de compra sem peça');
+      if (!pecaId) throw invalido('Item de compra sem peça');
 
-      await aplicarEntradaEstoque(tx, pecaId, item.quantidade, item.custoUnit, `Compra #${criada.numero} — ${fornecedor.nome}`);
+      await darEntrada(tx, pecaId, item.quantidade, item.custoUnit, {
+        motivo: `Compra #${compra.numero} — ${fornecedor.nome}`,
+        compraId: compra.id,
+        usuarioId: ator.id,
+      });
       await tx.compraItem.create({
-        data: { compraId: criada.id, pecaId, quantidade: item.quantidade, custoUnit: item.custoUnit },
+        data: { compraId: compra.id, pecaId, quantidade: item.quantidade, custoUnit: item.custoUnit },
       });
     }
 
     // À vista: já sai do caixa. A prazo: fica como conta a pagar até o acerto.
-    if (input.pago) {
-      await lancarSaidaNoCaixa(tx, `Compra #${criada.numero} — ${fornecedor.nome}`, valorTotal, usuarioId);
+    if (dados.pago && valorTotal > 0) {
+      await lancar(tx, {
+        tipo: 'SAIDA',
+        origem: 'DESPESA',
+        descricao: `Compra #${compra.numero} — ${fornecedor.nome}`,
+        valor: valorTotal,
+        formaPagamento: dados.formaPagamento ?? 'A_VISTA',
+        categoria: 'Compra de peças',
+        compraId: compra.id,
+        usuarioId: ator.id,
+      });
     }
-    return criada;
+    return compra.id;
   });
-
-  await invalidarEstoque();
-  return getCompra(compra.id);
+  return buscar(id);
 }
 
-/** Resumo "quanto devo a cada distribuidor" (compras PENDENTE agrupadas). */
-export async function contasAPagar() {
+/** Quanto se deve a cada distribuidor (compras PENDENTE agrupadas). */
+export async function contasAPagar(): Promise<ContasAPagarDTO> {
+  const hoje = inicioDoDia();
   const pendentes = await prisma.compra.findMany({
     where: { status: 'PENDENTE' },
     include: { fornecedor: { select: { id: true, nome: true, telefone: true } } },
     orderBy: { data: 'asc' },
   });
 
-  const map = new Map<string, any>();
+  const mapa = new Map<string, ContasAPagarDTO['fornecedores'][number]>();
+  let totalVencido = 0;
   for (const c of pendentes) {
-    const cur = map.get(c.fornecedorId) ?? {
+    const valor = num(c.valorTotal);
+    if (c.vencimento && c.vencimento < hoje) totalVencido = somar(totalVencido, valor);
+
+    const atual = mapa.get(c.fornecedorId) ?? {
       fornecedor: c.fornecedor,
       totalDevido: 0,
       compras: 0,
-      compraMaisAntiga: c.data,
+      compraMaisAntiga: c.data.toISOString(),
+      proximoVencimento: null,
     };
-    cur.totalDevido += num(c.valorTotal);
-    cur.compras += 1;
-    if (c.data < cur.compraMaisAntiga) cur.compraMaisAntiga = c.data;
-    map.set(c.fornecedorId, cur);
+    atual.totalDevido = somar(atual.totalDevido, valor);
+    atual.compras += 1;
+    if (c.vencimento && (!atual.proximoVencimento || c.vencimento.toISOString() < atual.proximoVencimento)) {
+      atual.proximoVencimento = c.vencimento.toISOString();
+    }
+    mapa.set(c.fornecedorId, atual);
   }
 
-  const fornecedores = [...map.values()]
-    .map((f) => ({ ...f, totalDevido: round(f.totalDevido) }))
-    .sort((a, b) => b.totalDevido - a.totalDevido);
-
-  return { totalAPagar: round(fornecedores.reduce((s, f) => s + f.totalDevido, 0)), fornecedores };
+  const fornecedores = [...mapa.values()].sort((a, b) => b.totalDevido - a.totalDevido);
+  return { totalAPagar: somar(...fornecedores.map((f) => f.totalDevido)), totalVencido, fornecedores };
 }
 
 /** Paga uma compra a prazo: quita e lança a saída no caixa. */
-export async function pagarCompra(id: string, usuarioId?: string) {
-  const compra = await prisma.compra.findUnique({ where: { id }, include: { fornecedor: { select: { nome: true } } } });
-  if (!compra) throw new AppError(404, 'Compra não encontrada');
-  if (compra.status === 'PAGA') throw new AppError(409, 'Esta compra já foi paga');
-
+export async function pagar(id: string, dados: z.output<typeof pagarCompraSchema>, ator: UsuarioSessao) {
   await prisma.$transaction(async (tx) => {
-    await tx.compra.update({ where: { id }, data: { status: 'PAGA', pagoEm: new Date() } });
-    await lancarSaidaNoCaixa(tx, `Compra #${compra.numero} — ${compra.fornecedor.nome}`, compra.valorTotal, usuarioId);
+    const { count } = await tx.compra.updateMany({
+      where: { id, status: 'PENDENTE' },
+      data: { status: 'PAGA', pagoEm: new Date(), formaPagamento: dados.formaPagamento },
+    });
+    if (count === 0) {
+      const existe = await tx.compra.count({ where: { id } });
+      throw existe ? conflito('Esta compra já foi paga') : naoEncontrado('Compra não encontrada');
+    }
+    const c = await tx.compra.findUniqueOrThrow({ where: { id }, include: { fornecedor: { select: { nome: true } } } });
+    await lancar(tx, {
+      tipo: 'SAIDA',
+      origem: 'DESPESA',
+      descricao: `Compra #${c.numero} — ${c.fornecedor.nome}`,
+      valor: num(c.valorTotal),
+      formaPagamento: dados.formaPagamento,
+      categoria: 'Compra de peças',
+      compraId: id,
+      usuarioId: ator.id,
+    });
   });
-
-  return getCompra(id);
+  return buscar(id);
 }
 
-/** Acerto do mês: quita todas as compras pendentes de um distribuidor de uma vez. */
-export async function quitarFornecedor(fornecedorId: string, usuarioId?: string) {
+/** Acerto do mês: quita todas as compras em aberto de um distribuidor de uma vez. */
+export async function quitarFornecedor(fornecedorId: string, dados: z.output<typeof pagarCompraSchema>, ator: UsuarioSessao) {
   const fornecedor = await prisma.fornecedor.findUnique({ where: { id: fornecedorId } });
-  if (!fornecedor) throw new AppError(404, 'Distribuidor não encontrado');
+  if (!fornecedor) throw naoEncontrado('Distribuidor não encontrado');
 
-  const pendentes = await prisma.compra.findMany({ where: { fornecedorId, status: 'PENDENTE' } });
-  if (pendentes.length === 0) throw new AppError(409, 'Este distribuidor não tem compras em aberto');
+  return prisma.$transaction(async (tx) => {
+    const pendentes = await tx.compra.findMany({ where: { fornecedorId, status: 'PENDENTE' }, orderBy: { numero: 'asc' } });
+    if (pendentes.length === 0) throw conflito('Este distribuidor não tem compras em aberto');
+    const total = somar(...pendentes.map((c) => num(c.valorTotal)));
 
-  const total = round(pendentes.reduce((s, c) => s + num(c.valorTotal), 0));
-
-  await prisma.$transaction(async (tx) => {
-    await tx.compra.updateMany({ where: { fornecedorId, status: 'PENDENTE' }, data: { status: 'PAGA', pagoEm: new Date() } });
-    // Um único lançamento agregado, para o caixa não encher de linhas no acerto.
-    await lancarSaidaNoCaixa(tx, `Acerto — ${fornecedor.nome} (${pendentes.length} compra(s))`, total, usuarioId);
+    await tx.compra.updateMany({
+      where: { id: { in: pendentes.map((c) => c.id) } },
+      data: { status: 'PAGA', pagoEm: new Date(), formaPagamento: dados.formaPagamento },
+    });
+    // Um lançamento só, para o caixa não encher de linhas no acerto.
+    await lancar(tx, {
+      tipo: 'SAIDA',
+      origem: 'DESPESA',
+      descricao: `Acerto — ${fornecedor.nome} (compras ${pendentes.map((c) => `#${c.numero}`).join(', ')})`,
+      valor: total,
+      formaPagamento: dados.formaPagamento,
+      categoria: 'Compra de peças',
+      usuarioId: ator.id,
+    });
+    return { quitadas: pendentes.length, total };
   });
-
-  return { quitadas: pendentes.length, total };
 }
 
 /** Exclui uma compra a prazo, estornando o estoque. Compra paga não se apaga. */
-export async function deleteCompra(id: string) {
-  const compra = await prisma.compra.findUnique({ where: { id }, include: { itens: true } });
-  if (!compra) throw new AppError(404, 'Compra não encontrada');
-  if (compra.status === 'PAGA') throw new AppError(400, 'Compra paga não pode ser apagada (já saiu no caixa)');
-
+export async function excluir(id: string, ator: UsuarioSessao) {
   await prisma.$transaction(async (tx) => {
-    // Estorna o estoque que a compra havia dado entrada.
+    const compra = await tx.compra.findUnique({ where: { id }, include: { itens: true } });
+    if (!compra) throw naoEncontrado('Compra não encontrada');
+    if (compra.status === 'PAGA') throw conflito('Compra paga não pode ser apagada (já saiu do caixa)');
+
     for (const item of compra.itens) {
-      await tx.peca.update({ where: { id: item.pecaId }, data: { estoqueAtual: { decrement: item.quantidade } } });
-      await tx.movimentoEstoque.create({
-        data: { pecaId: item.pecaId, tipo: 'SAIDA', quantidade: item.quantidade, motivo: `Estorno da compra #${compra.numero}` },
+      await darSaida(tx, item.pecaId, num(item.quantidade), {
+        motivo: `Estorno da compra #${compra.numero}`,
+        usuarioId: ator.id,
       });
     }
     await tx.compra.delete({ where: { id } }); // itens saem por cascade
   });
-
-  await invalidarEstoque();
 }

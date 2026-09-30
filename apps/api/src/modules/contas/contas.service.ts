@@ -1,108 +1,174 @@
-import type { StatusParcela } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import type { z } from 'zod';
+import type { DevedorDTO, ListaContasDTO, ParcelaDTO, ResumoDevedoresDTO, UsuarioSessao } from '@hermes/shared';
+import type { lancarFiadoSchema, listarContasQuery, receberParcelaSchema } from '@hermes/shared/schemas';
 import { prisma } from '../../lib/prisma.js';
-import { AppError } from '../../lib/errors.js';
-import type { ReceberParcelaInput } from './contas.schema.js';
+import { conflito, invalido, naoEncontrado } from '../../lib/errors.js';
+import { brl, num, somar, subtrair } from '../../lib/dinheiro.js';
+import { inicioDoDia } from '../../lib/datas.js';
+import { pagina, paginar } from '../../lib/paginacao.js';
+import { lancar } from '../../dominio/caixa.js';
+import { atualizarQuitacaoDaOS, gerarParcelas, saldoParcela } from '../../dominio/fiado.js';
+import { incluirParcela, paraParcela } from './contas.mapper.js';
 
-const num = (v: unknown) => Number(v);
-const round = (n: number) => Math.round(n * 100) / 100;
+// ============================================================
+// Contas a Receber — o fiado e o parcelado (RN-11.1 / RN-11.2).
+// Cada valor recebido entra no caixa na hora; a parcela aceita
+// baixa parcial ("deu 100 dos 350 hoje").
+// ============================================================
 
-function inicioDeHoje() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
+/** Soma o saldo (valor − pago) das parcelas pendentes de um filtro inteiro. */
+async function saldoDe(where: Prisma.ContaReceberWhereInput) {
+  const s = await prisma.contaReceber.aggregate({
+    where: { ...where, status: 'PENDENTE' },
+    _sum: { valor: true, valorPago: true },
+  });
+  return subtrair(num(s._sum.valor), num(s._sum.valorPago));
 }
 
-function toDTO(c: any, hoje = inicioDeHoje()) {
+export async function listar(q: z.output<typeof listarContasQuery>): Promise<ListaContasDTO> {
+  const hoje = inicioDoDia();
+  const where: Prisma.ContaReceberWhereInput = {
+    ...(q.clienteId ? { clienteId: q.clienteId } : {}),
+    ...(q.status ? { status: q.status } : {}),
+    ...(q.atrasadas ? { status: 'PENDENTE', vencimento: { lt: hoje } } : {}),
+    ...(q.busca ? { cliente: { nome: { contains: q.busca, mode: 'insensitive' } } } : {}),
+  };
+
+  const [itens, total, pendente, emAtraso] = await Promise.all([
+    prisma.contaReceber.findMany({
+      where,
+      // Pendentes primeiro, pela ordem de vencimento — é a fila de cobrança.
+      orderBy: [{ status: 'asc' }, { vencimento: 'asc' }],
+      include: incluirParcela,
+      ...paginar(q),
+    }),
+    prisma.contaReceber.count({ where }),
+    saldoDe(where),
+    saldoDe({ ...where, vencimento: { lt: hoje } }),
+  ]);
+
   return {
-    ...c,
-    valor: num(c.valor),
-    // RN-11.2: parcela pendente vencida = em atraso (calculado na hora).
-    emAtraso: c.status === 'PENDENTE' && new Date(c.vencimento) < hoje,
+    ...pagina(
+      itens.map((c) => paraParcela(c, hoje)),
+      total,
+      q,
+    ),
+    totais: { pendente, emAtraso },
   };
 }
 
-export async function listContas(filtros: { clienteId?: string; status?: StatusParcela; atrasadas?: boolean }) {
-  const contas = await prisma.contaReceber.findMany({
-    where: {
-      ...(filtros.clienteId ? { clienteId: filtros.clienteId } : {}),
-      ...(filtros.status ? { status: filtros.status } : {}),
-    },
-    orderBy: [{ status: 'asc' }, { vencimento: 'asc' }],
-    include: {
-      cliente: { select: { id: true, nome: true, telefone: true } },
-      os: { select: { id: true, numero: true } },
-    },
-  });
-
-  const hoje = inicioDeHoje();
-  let dto = contas.map((c) => toDTO(c, hoje));
-  if (filtros.atrasadas) dto = dto.filter((c) => c.emAtraso);
-
-  const pendente = dto.filter((c) => c.status === 'PENDENTE').reduce((s, c) => s + c.valor, 0);
-  const emAtraso = dto.filter((c) => c.emAtraso).reduce((s, c) => s + c.valor, 0);
-  return { contas: dto, totais: { pendente: round(pendente), emAtraso: round(emAtraso) } };
-}
-
-// Resumo por cliente (RN-11.2): quem deve, quanto, e quem está em atraso.
-export async function resumoPorCliente() {
-  const contas = await prisma.contaReceber.findMany({
+/** Quem deve, quanto e quem está em atraso (RN-11.2) — ordenado por quem mais preocupa. */
+export async function resumo(): Promise<ResumoDevedoresDTO> {
+  const hoje = inicioDoDia();
+  const pendentes = await prisma.contaReceber.findMany({
     where: { status: 'PENDENTE' },
-    include: { cliente: { select: { id: true, nome: true, telefone: true } } },
+    include: { cliente: { select: { id: true, nome: true, telefone: true, whatsapp: true } } },
   });
 
-  const hoje = inicioDeHoje();
-  const map = new Map<string, any>();
-  for (const c of contas) {
-    const atraso = new Date(c.vencimento) < hoje;
-    const cur = map.get(c.clienteId) ?? { cliente: c.cliente, totalDevido: 0, emAtraso: 0, parcelasAbertas: 0, temAtraso: false };
-    cur.totalDevido += num(c.valor);
-    cur.parcelasAbertas += 1;
-    if (atraso) {
-      cur.emAtraso += num(c.valor);
-      cur.temAtraso = true;
+  const porCliente = new Map<string, DevedorDTO>();
+  for (const c of pendentes) {
+    const saldo = saldoParcela(c);
+    const atual = porCliente.get(c.clienteId) ?? {
+      cliente: c.cliente,
+      totalDevido: 0,
+      emAtraso: 0,
+      parcelasAbertas: 0,
+      temAtraso: false,
+    };
+    atual.totalDevido = somar(atual.totalDevido, saldo);
+    atual.parcelasAbertas += 1;
+    if (c.vencimento < hoje) {
+      atual.emAtraso = somar(atual.emAtraso, saldo);
+      atual.temAtraso = true;
     }
-    map.set(c.clienteId, cur);
+    porCliente.set(c.clienteId, atual);
   }
 
-  const clientes = [...map.values()]
-    .map((c) => ({ ...c, totalDevido: round(c.totalDevido), emAtraso: round(c.emAtraso) }))
-    .sort((a, b) => b.emAtraso - a.emAtraso || b.totalDevido - a.totalDevido);
-
+  const clientes = [...porCliente.values()].sort((a, b) => b.emAtraso - a.emAtraso || b.totalDevido - a.totalDevido);
   return {
-    totalReceber: round(clientes.reduce((s, c) => s + c.totalDevido, 0)),
-    totalEmAtraso: round(clientes.reduce((s, c) => s + c.emAtraso, 0)),
+    totalReceber: somar(...clientes.map((c) => c.totalDevido)),
+    totalEmAtraso: somar(...clientes.map((c) => c.emAtraso)),
     clientes,
   };
 }
 
-// Dá baixa numa parcela: quita e lança a entrada no caixa (RN-11.1).
-export async function receberParcela(id: string, input: ReceberParcelaInput, usuarioId: string) {
-  const conta = await prisma.contaReceber.findUnique({ where: { id }, include: { cliente: true, os: true } });
-  if (!conta) throw new AppError(404, 'Parcela não encontrada');
-  if (conta.status === 'PAGA') throw new AppError(409, 'Esta parcela já foi recebida');
+/**
+ * Baixa de parcela (RN-11.1): o valor entra no caixa na hora, ligado à
+ * parcela e à OS. Sem valor informado, quita o saldo; com valor menor,
+ * baixa parcial. Quitada a última parcela, a OS passa a constar como paga.
+ */
+export async function receber(id: string, dados: z.output<typeof receberParcelaSchema>, ator: UsuarioSessao): Promise<ParcelaDTO> {
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT id FROM contas_receber WHERE id = ${id} FOR UPDATE`;
+    const c = await tx.contaReceber.findUnique({ where: { id }, include: incluirParcela });
+    if (!c) throw naoEncontrado('Parcela não encontrada');
+    if (c.status === 'PAGA') throw conflito('Esta parcela já foi recebida');
+    if (c.status === 'CANCELADA') throw conflito('Esta parcela foi cancelada');
 
-  const descricao =
-    `Parcela ${conta.parcela}/${conta.totalParcelas}` +
-    (conta.os ? ` — OS #${conta.os.numero}` : '') +
-    ` — ${conta.cliente.nome}`;
+    const saldo = saldoParcela(c);
+    const valor = dados.valor ?? saldo;
+    if (valor > saldo) throw invalido(`O valor passa do que falta nesta parcela (${brl(saldo)})`);
 
-  const atualizada = await prisma.$transaction(async (tx) => {
-    const upd = await tx.contaReceber.update({ where: { id }, data: { status: 'PAGA', pagoEm: new Date() } });
-    // osId fica null de propósito: várias parcelas da mesma OS não podem
-    // dividir o mesmo lançamento (osId é único em lancamentos_caixa).
-    await tx.lancamentoCaixa.create({
-      data: {
-        tipo: 'ENTRADA',
-        origem: 'OS',
-        descricao,
-        valor: upd.valor,
-        formaPagamento: input.formaPagamento,
-        categoria: 'Contas a Receber',
-        usuarioId,
-      },
+    const valorPago = somar(num(c.valorPago), valor);
+    const quitou = valorPago >= num(c.valor);
+    await tx.contaReceber.update({
+      where: { id },
+      data: { valorPago, status: quitou ? 'PAGA' : 'PENDENTE', pagoEm: quitou ? new Date() : null },
     });
-    return upd;
+
+    const origem = c.os ? `OS #${c.os.numero}` : (c.descricao ?? 'Fiado');
+    await lancar(tx, {
+      tipo: 'ENTRADA',
+      origem: 'OS',
+      descricao: `Parcela ${c.parcela}/${c.totalParcelas}${quitou ? '' : ' (parcial)'} — ${origem} — ${c.cliente.nome}`,
+      valor,
+      formaPagamento: dados.formaPagamento,
+      categoria: 'Contas a Receber',
+      osId: c.osId,
+      contaReceberId: c.id,
+      usuarioId: ator.id,
+    });
+
+    if (quitou && c.osId) await atualizarQuitacaoDaOS(tx, c.osId);
   });
 
-  return toDTO(atualizada);
+  const atualizada = await prisma.contaReceber.findUniqueOrThrow({ where: { id }, include: incluirParcela });
+  return paraParcela(atualizada);
+}
+
+/**
+ * Fiado lançado à mão — para passar o caderno de fiado para o sistema na
+ * implantação (ou uma dívida que não veio de OS).
+ */
+export async function lancarFiado(dados: z.output<typeof lancarFiadoSchema>) {
+  const cliente = await prisma.cliente.findUnique({ where: { id: dados.clienteId }, select: { ativo: true } });
+  if (!cliente || !cliente.ativo) throw invalido('Cliente não encontrado');
+
+  const valores = await prisma.$transaction((tx) =>
+    gerarParcelas(tx, {
+      clienteId: dados.clienteId,
+      descricao: dados.descricao,
+      total: dados.valor,
+      parcelas: dados.parcelas,
+      primeiroVencimento: dados.primeiroVencimento,
+    }),
+  );
+  return { parcelas: valores.length, total: dados.valor };
+}
+
+/**
+ * Cancela o que falta de uma parcela (perdão de dívida, calote assumido).
+ * O que já foi pago continua registrado; só o saldo deixa de ser cobrado.
+ */
+export async function cancelar(id: string): Promise<ParcelaDTO> {
+  await prisma.$transaction(async (tx) => {
+    const c = await tx.contaReceber.findUnique({ where: { id } });
+    if (!c) throw naoEncontrado('Parcela não encontrada');
+    if (c.status !== 'PENDENTE') throw conflito('Só parcela pendente pode ser cancelada');
+    await tx.contaReceber.update({ where: { id }, data: { status: 'CANCELADA' } });
+    if (c.osId) await atualizarQuitacaoDaOS(tx, c.osId);
+  });
+  const atualizada = await prisma.contaReceber.findUniqueOrThrow({ where: { id }, include: incluirParcela });
+  return paraParcela(atualizada);
 }

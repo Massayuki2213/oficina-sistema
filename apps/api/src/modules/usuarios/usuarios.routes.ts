@@ -1,71 +1,54 @@
-import type { FastifyInstance } from 'fastify';
-import { authenticate, requirePermission } from '../../lib/auth.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import {
-  createUsuarioSchema,
-  updateUsuarioSchema,
-  resetSenhaSchema,
   ativoSchema,
+  atualizarUsuarioSchema,
+  criarUsuarioSchema,
+  equipeQuery,
+  idParams,
+  redefinirSenhaSchema,
   trocarSenhaSchema,
-} from './usuarios.schema.js';
+} from '@hermes/shared/schemas';
+import { exigir, iniciarSessao } from '../../plugins/autenticacao.js';
 import * as service from './usuarios.service.js';
 
-export async function usuariosRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', authenticate);
+const tags = ['Usuários'];
 
-  // PATCH /usuarios/minha-senha — qualquer perfil troca a própria senha.
-  // Vem antes das rotas do Dono de propósito: não exige gerenciarUsuarios.
-  app.patch('/minha-senha', async (req, reply) => {
-    const parsed = trocarSenhaSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    await service.trocarPropriaSenha(req.user.sub, parsed.data.senhaAtual, parsed.data.novaSenha);
+export const usuariosRoutes: FastifyPluginAsyncZod = async (app) => {
+  // GET /api/usuarios/equipe?perfil=MECANICO — quem está ativo (para escolher o mecânico).
+  app.get('/equipe', { schema: { tags, querystring: equipeQuery } }, (req) => service.equipe(req.query.perfil));
+
+  // PATCH /api/usuarios/minha-senha — qualquer perfil troca a própria senha.
+  app.patch('/minha-senha', { schema: { tags, body: trocarSenhaSchema } }, async (req, reply) => {
+    const u = await service.trocarPropriaSenha(req.usuario.id, req.body.senhaAtual, req.body.novaSenha);
+    // As outras sessões caíram; esta continua com um cookie novo.
+    await iniciarSessao(req, reply, u);
     return reply.code(204).send();
   });
 
   // Daqui para baixo: só o Dono administra usuários.
-  const soDono = { preHandler: [requirePermission('gerenciarUsuarios')] };
+  const soDono = { onRequest: exigir('gerenciarUsuarios') };
 
-  // GET /usuarios — todos, inclusive inativos
-  app.get('/', soDono, async () => service.listUsuarios());
+  app.get('/', { ...soDono, schema: { tags } }, () => service.listar());
 
-  // POST /usuarios — cadastra quem entra no sistema
-  app.post('/', soDono, async (req, reply) => {
-    const parsed = createUsuarioSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return reply.code(201).send(await service.createUsuario(parsed.data));
-  });
+  app.post('/', { ...soDono, schema: { tags, body: criarUsuarioSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criar(req.body)),
+  );
 
-  // PUT /usuarios/:id — nome, e-mail e perfil
-  app.put('/:id', soDono, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = updateUsuarioSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return service.updateUsuario(id, parsed.data);
-  });
+  app.put('/:id', { ...soDono, schema: { tags, params: idParams, body: atualizarUsuarioSchema } }, (req) =>
+    service.atualizar(req.params.id, req.body, req.usuario.id),
+  );
 
-  // PATCH /usuarios/:id/senha — o Dono redefine a senha de quem esqueceu
-  app.patch('/:id/senha', soDono, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = resetSenhaSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    await service.resetSenha(id, parsed.data.senha);
+  app.patch('/:id/senha', { ...soDono, schema: { tags, params: idParams, body: redefinirSenhaSchema } }, async (req, reply) => {
+    await service.redefinirSenha(req.params.id, req.body.senha);
     return reply.code(204).send();
   });
 
-  // PATCH /usuarios/:id/ativo — liga/desliga o acesso (não apaga: o histórico aponta para ele)
-  app.patch('/:id/ativo', soDono, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = ativoSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return service.setAtivo(id, parsed.data.ativo, req.user.sub);
-  });
-}
+  app.patch('/:id/ativo', { ...soDono, schema: { tags, params: idParams, body: ativoSchema } }, (req) =>
+    service.definirAtivo(req.params.id, req.body.ativo, req.usuario.id),
+  );
+
+  // POST /api/usuarios/:id/encerrar-sessoes — derruba os aparelhos da pessoa (celular perdido).
+  app.post('/:id/encerrar-sessoes', { ...soDono, schema: { tags, params: idParams } }, (req) =>
+    service.encerrarSessoes(req.params.id),
+  );
+};

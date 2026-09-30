@@ -1,70 +1,116 @@
+import type { Prisma } from '@prisma/client';
+import type { z } from 'zod';
+import type { LancamentoDTO, ListaCaixaDTO, ResumoDiaDTO, UsuarioSessao } from '@hermes/shared';
+import type { lancamentoSchema, listarCaixaQuery } from '@hermes/shared/schemas';
 import { prisma } from '../../lib/prisma.js';
-import type { LancamentoInput } from './caixa.schema.js';
+import { num, somar, subtrair } from '../../lib/dinheiro.js';
+import { dataLocal, fimDoDia, hojeISO, inicioDoDia, intervalo, paraDataISO } from '../../lib/datas.js';
+import { pagina, paginar } from '../../lib/paginacao.js';
+import { lancar } from '../../dominio/caixa.js';
 
-const num = (v: unknown) => Number(v);
-const round = (n: number) => Math.round(n * 100) / 100;
-const toDTO = (l: any) => ({ ...l, valor: num(l.valor) });
+const incluirRel = {
+  usuario: { select: { nome: true } },
+  os: { select: { id: true, numero: true } },
+} satisfies Prisma.LancamentoCaixaInclude;
 
-function intervalo(de?: string, ate?: string) {
-  const gte = de ? new Date(de + 'T00:00:00') : undefined;
-  const lte = ate ? new Date(ate + 'T23:59:59.999') : undefined;
-  if (!gte && !lte) return {};
-  return { data: { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) } };
-}
+type LancamentoCompleto = Prisma.LancamentoCaixaGetPayload<{ include: typeof incluirRel }>;
 
-function totais(lancamentos: { tipo: string; valor: unknown }[]) {
-  const entradas = lancamentos.filter((l) => l.tipo === 'ENTRADA').reduce((s, l) => s + num(l.valor), 0);
-  const saidas = lancamentos.filter((l) => l.tipo === 'SAIDA').reduce((s, l) => s + num(l.valor), 0);
-  return { entradas: round(entradas), saidas: round(saidas), saldo: round(entradas - saidas) };
-}
-
-// Lista os lançamentos do período com os totais (entradas, saídas, saldo).
-export async function listCaixa(de?: string, ate?: string) {
-  const lancamentos = await prisma.lancamentoCaixa.findMany({
-    where: intervalo(de, ate),
-    orderBy: { data: 'desc' },
-    include: { usuario: { select: { id: true, nome: true } } },
-  });
-  return { lancamentos: lancamentos.map(toDTO), totais: totais(lancamentos) };
-}
-
-// Fechamento do dia (RN-15): totais e quebra por forma de pagamento.
-export async function resumoDia(dataStr?: string) {
-  const base = dataStr ? new Date(dataStr + 'T00:00:00') : new Date();
-  const inicio = new Date(base);
-  inicio.setHours(0, 0, 0, 0);
-  const fim = new Date(base);
-  fim.setHours(23, 59, 59, 999);
-
-  const lancamentos = await prisma.lancamentoCaixa.findMany({ where: { data: { gte: inicio, lte: fim } } });
-
-  const porFormaPagamento: Record<string, number> = {};
-  for (const l of lancamentos) {
-    if (l.tipo !== 'ENTRADA') continue;
-    const f = l.formaPagamento ?? 'OUTRO';
-    porFormaPagamento[f] = round((porFormaPagamento[f] ?? 0) + num(l.valor));
-  }
-
+export function paraLancamentoDTO(l: LancamentoCompleto): LancamentoDTO {
   return {
-    data: inicio.toISOString().slice(0, 10),
-    quantidade: lancamentos.length,
-    ...totais(lancamentos),
-    porFormaPagamento,
+    id: l.id,
+    data: l.data.toISOString(),
+    tipo: l.tipo,
+    origem: l.origem,
+    descricao: l.descricao,
+    valor: num(l.valor),
+    formaPagamento: l.formaPagamento,
+    categoria: l.categoria,
+    usuario: l.usuario?.nome ?? null,
+    os: l.os,
   };
 }
 
-export async function criarLancamento(input: LancamentoInput, usuarioId: string) {
-  const origem = input.origem ?? (input.tipo === 'ENTRADA' ? 'APORTE' : 'DESPESA');
-  const lancamento = await prisma.lancamentoCaixa.create({
-    data: {
-      tipo: input.tipo,
-      origem,
-      descricao: input.descricao,
-      valor: input.valor,
-      formaPagamento: input.formaPagamento ?? null,
-      categoria: input.categoria ?? null,
-      usuarioId,
-    },
-  });
-  return toDTO(lancamento);
+/** Soma entradas e saídas de um filtro inteiro (não só da página). */
+async function totaisDe(where: Prisma.LancamentoCaixaWhereInput) {
+  const grupos = await prisma.lancamentoCaixa.groupBy({ by: ['tipo'], where, _sum: { valor: true } });
+  const entradas = num(grupos.find((g) => g.tipo === 'ENTRADA')?._sum.valor);
+  const saidas = num(grupos.find((g) => g.tipo === 'SAIDA')?._sum.valor);
+  return { entradas, saidas, saldo: subtrair(entradas, saidas) };
+}
+
+export async function listar(q: z.output<typeof listarCaixaQuery>): Promise<ListaCaixaDTO> {
+  const periodo = intervalo(q.de, q.ate);
+  const where: Prisma.LancamentoCaixaWhereInput = {
+    ...(periodo ? { data: periodo } : {}),
+    ...(q.tipo ? { tipo: q.tipo } : {}),
+    ...(q.origem ? { origem: q.origem } : {}),
+    ...(q.busca ? { descricao: { contains: q.busca, mode: 'insensitive' } } : {}),
+  };
+  const [itens, total, totais] = await Promise.all([
+    prisma.lancamentoCaixa.findMany({ where, orderBy: [{ data: 'desc' }, { id: 'desc' }], include: incluirRel, ...paginar(q) }),
+    prisma.lancamentoCaixa.count({ where }),
+    totaisDe(where),
+  ]);
+  return { ...pagina(itens.map(paraLancamentoDTO), total, q), totais };
+}
+
+/**
+ * RN-15 — fechamento do dia: quanto havia, quanto entrou (por forma, para
+ * conferir a gaveta, o PIX e a maquininha), quanto saiu e o saldo final.
+ */
+export async function resumoDia(dataISO = hojeISO()): Promise<ResumoDiaDTO> {
+  const inicio = inicioDoDia(dataISO);
+  const fim = fimDoDia(dataISO);
+
+  const [anterior, lancamentos] = await Promise.all([
+    totaisDe({ data: { lt: inicio } }),
+    prisma.lancamentoCaixa.findMany({
+      where: { data: { gte: inicio, lte: fim } },
+      orderBy: { data: 'asc' },
+      include: incluirRel,
+    }),
+  ]);
+
+  const porForma = (tipo: 'ENTRADA' | 'SAIDA') => {
+    const mapa: Record<string, number> = {};
+    for (const l of lancamentos.filter((x) => x.tipo === tipo)) {
+      const forma = l.formaPagamento ?? 'OUTRA';
+      mapa[forma] = somar(mapa[forma] ?? 0, num(l.valor));
+    }
+    return mapa;
+  };
+
+  const entradas = somar(...lancamentos.filter((l) => l.tipo === 'ENTRADA').map((l) => num(l.valor)));
+  const saidas = somar(...lancamentos.filter((l) => l.tipo === 'SAIDA').map((l) => num(l.valor)));
+
+  return {
+    data: paraDataISO(inicio),
+    saldoAnterior: anterior.saldo,
+    entradas,
+    saidas,
+    saldoFinal: subtrair(somar(anterior.saldo, entradas), saidas),
+    entradasPorForma: porForma('ENTRADA'),
+    saidasPorForma: porForma('SAIDA'),
+    lancamentos: lancamentos.map(paraLancamentoDTO),
+  };
+}
+
+/** Lançamento manual: aporte, retirada, venda avulsa, despesa miúda. */
+export async function criar(dados: z.output<typeof lancamentoSchema>, ator: UsuarioSessao): Promise<LancamentoDTO> {
+  // Data informada e diferente de hoje: meio-dia daquela data (evita virar o dia em outro fuso).
+  const data = dados.data && dados.data !== hojeISO() ? dataLocal(dados.data) : undefined;
+  const l = await prisma.$transaction((tx) =>
+    lancar(tx, {
+      tipo: dados.tipo,
+      origem: dados.origem,
+      descricao: dados.descricao,
+      valor: dados.valor,
+      formaPagamento: dados.formaPagamento ?? null,
+      categoria: dados.categoria ?? null,
+      data,
+      usuarioId: ator.id,
+    }),
+  );
+  const completo = await prisma.lancamentoCaixa.findUniqueOrThrow({ where: { id: l.id }, include: incluirRel });
+  return paraLancamentoDTO(completo);
 }

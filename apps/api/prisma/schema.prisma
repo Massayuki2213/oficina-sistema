@@ -1,6 +1,12 @@
 // ============================================================
 // Hermes — Schema do banco de dados (PostgreSQL)
-// Mapeia o Modelo de Domínio da seção 4 do PLANEJAMENTO.md
+// Mapeia o Modelo de Domínio da seção 4 do PLANEJAMENTO.md.
+//
+// Convenções:
+//  - dinheiro em DECIMAL(10,2); quantidade de peça em DECIMAL (aceita
+//    fração: 3,5 L de óleo, 1,25 m de mangueira);
+//  - CPF/CNPJ e telefone guardados sem pontuação (a tela formata);
+//  - nada que envolva dinheiro ou estoque é apagado: estorna-se.
 // ============================================================
 
 generator client {
@@ -67,19 +73,25 @@ enum TipoLancamento {
   SAIDA
 }
 
+// APORTE e RETIRADA são dinheiro do dono: mexem no caixa, mas não são
+// faturamento nem despesa. ESTORNO desfaz uma entrada (sem apagá-la).
 enum OrigemLancamento {
   OS
   VENDA_BALCAO
   DESPESA
   APORTE
+  RETIRADA
+  ESTORNO
 }
 
 enum FormaPagamento {
   A_VISTA
   PIX
   CARTAO
+  TRANSFERENCIA
   PARCELADO
   FIADO
+  MISTO
 }
 
 enum TipoMovimentoEstoque {
@@ -91,7 +103,7 @@ enum TipoMovimentoEstoque {
 enum StatusParcela {
   PENDENTE
   PAGA
-  ATRASADA
+  CANCELADA
 }
 
 // Compra de peças do distribuidor: PENDENTE = comprada a prazo (dívida),
@@ -105,120 +117,168 @@ enum StatusCompra {
 
 model Usuario {
   id           String        @id @default(cuid())
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao       Int           @default(0)
   nome         String
   email        String        @unique
   senhaHash    String
   perfil       PerfilUsuario @default(ATENDENTE)
   ativo        Boolean       @default(true)
   criadoEm     DateTime      @default(now())
+  // % sobre a mão de obra das OS concluídas (comissão de mecânico).
+  comissaoPct  Decimal?      @map("comissao_pct") @db.Decimal(5, 2)
+  ultimoAcesso DateTime?     @map("ultimo_acesso")
 
-  ordens       OrdemServico[]   @relation("MecanicoResponsavel")
-  lancamentos  LancamentoCaixa[]
-  logs         LogAuditoria[]
+  ordens      OrdemServico[]     @relation("MecanicoResponsavel")
+  lancamentos LancamentoCaixa[]
+  logs        LogAuditoria[]
+  movimentos  MovimentoEstoque[]
+  vendas      Venda[]
+  sessoes     Sessao[]
 
   @@map("usuarios")
+}
+
+// Sessão aberta (um login num aparelho). O cookie leva um token aleatório;
+// aqui fica só o hash dele (HMAC com SESSAO_SEGREDO) — quem lê o banco, ou
+// uma cópia de backup, não consegue entrar com ele. Logout, troca de senha
+// e "encerrar sessões" apagam a linha: a sessão cai na hora (ADR 0009).
+model Sessao {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique @map("token_hash")
+  usuarioId String   @map("usuario_id")
+  criadaEm  DateTime @default(now()) @map("criada_em")
+  ultimoUso DateTime @default(now()) @map("ultimo_uso")
+  // Renova com o uso (inatividade); nunca passa do limite absoluto desde o login.
+  expiraEm  DateTime @map("expira_em")
+  ip        String?
+  // Resumo do navegador/app ("Edge no Windows", "App Hermes"), para a pessoa reconhecer.
+  aparelho  String?
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@index([expiraEm])
+  @@map("sessoes")
 }
 
 // ---------------------- CADASTROS ----------------------
 
 model Cliente {
-  id          String     @id @default(cuid())
-  nome        String
-  tipo        TipoPessoa @default(PF)
-  cpfCnpj     String?    @map("cpf_cnpj")
-  telefone    String?
-  whatsapp    String?
-  email       String?
-  endereco    String?
-  observacoes String?
-  ativo       Boolean    @default(true)
-  dataCadastro DateTime  @default(now()) @map("data_cadastro")
+  id           String     @id @default(cuid())
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao       Int        @default(0)
+  nome         String
+  tipo         TipoPessoa @default(PF)
+  cpfCnpj      String?    @map("cpf_cnpj")
+  telefone     String?
+  whatsapp     String?
+  email        String?
+  endereco     String?
+  observacoes  String?
+  ativo        Boolean    @default(true)
+  dataCadastro DateTime   @default(now()) @map("data_cadastro")
 
-  carros      Carro[]
-  orcamentos  Orcamento[]
-  ordens      OrdemServico[]
-  visitas     Visita[]
+  carros        Carro[]
+  orcamentos    Orcamento[]
+  ordens        OrdemServico[]
+  visitas       Visita[]
   contasReceber ContaReceber[]
+  vendas        Venda[]
 
   @@index([nome])
+  @@index([cpfCnpj])
   @@map("clientes")
 }
 
 model Carro {
-  id          String   @id @default(cuid())
-  clienteId   String   @map("cliente_id")
-  placa       String   @unique
+  id          String  @id @default(cuid())
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao      Int     @default(0)
+  clienteId   String  @map("cliente_id")
+  placa       String  @unique
   marca       String
   modelo      String
   ano         Int?
   cor         String?
-  kmAtual     Int?     @map("km_atual")
+  kmAtual     Int?    @map("km_atual")
   chassi      String?
   combustivel String?
   observacoes String?
-  ativo       Boolean  @default(true)
+  ativo       Boolean @default(true)
 
-  cliente     Cliente  @relation(fields: [clienteId], references: [id])
-  orcamentos  Orcamento[]
-  ordens      OrdemServico[]
-  visitas     Visita[]
+  cliente    Cliente        @relation(fields: [clienteId], references: [id])
+  orcamentos Orcamento[]
+  ordens     OrdemServico[]
+  visitas    Visita[]
 
   @@index([clienteId])
   @@map("carros")
 }
 
 model Servico {
-  id            String  @id @default(cuid())
-  nome          String
-  descricao     String?
-  precoMaoDeObra Decimal @map("preco_mao_de_obra") @db.Decimal(10, 2)
-  tempoEstimadoMin Int?  @map("tempo_estimado_min")
-  categoria     String?
-  ativo         Boolean @default(true)
+  id               String  @id @default(cuid())
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao           Int     @default(0)
+  nome             String
+  descricao        String?
+  precoMaoDeObra   Decimal @map("preco_mao_de_obra") @db.Decimal(10, 2)
+  tempoEstimadoMin Int?    @map("tempo_estimado_min")
+  categoria        String?
+  ativo            Boolean @default(true)
 
   orcamentoItens OrcamentoServico[]
   osItens        OSServico[]
 
+  @@index([nome])
   @@map("servicos")
 }
 
 model Fornecedor {
   id           String  @id @default(cuid())
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao       Int     @default(0)
   nome         String
   cnpj         String?
   contato      String?
   telefone     String?
+  email        String?
   prazoEntrega Int?    @map("prazo_entrega_dias")
   observacoes  String?
 
-  pecas        Peca[]
-  despesas     Despesa[]
-  compras      Compra[]
+  pecas    Peca[]
+  despesas Despesa[]
+  compras  Compra[]
 
   @@map("fornecedores")
 }
 
 model Peca {
   id            String          @id @default(cuid())
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao        Int             @default(0)
   nome          String
   sku           String?         @unique
   codigoBarras  String?         @unique @map("codigo_barras")
   tipo          TipoItemEstoque @default(PECA)
   fornecedorId  String?         @map("fornecedor_id")
+  // Custo médio ponderado (RN-04), recalculado a cada entrada com custo.
   precoCusto    Decimal         @map("preco_custo") @db.Decimal(10, 2)
   precoVenda    Decimal         @map("preco_venda") @db.Decimal(10, 2)
-  margemPct     Decimal?        @map("margem_pct") @db.Decimal(5, 2)
-  estoqueAtual  Int             @default(0) @map("estoque_atual")
-  estoqueMinimo Int             @default(0) @map("estoque_minimo")
+  margemPct     Decimal?        @map("margem_pct") @db.Decimal(7, 2)
+  // Pode ficar negativo: peça usada numa OS antes de chegar (encomenda, RN-03).
+  estoqueAtual  Decimal         @default(0) @map("estoque_atual") @db.Decimal(12, 3)
+  estoqueMinimo Decimal         @default(0) @map("estoque_minimo") @db.Decimal(12, 3)
   unidade       String          @default("un")
   localizacao   String?
   ativo         Boolean         @default(true)
 
-  fornecedor    Fornecedor?     @relation(fields: [fornecedorId], references: [id])
+  fornecedor     Fornecedor?        @relation(fields: [fornecedorId], references: [id])
   orcamentoItens OrcamentoPeca[]
   osItens        OSPeca[]
   movimentos     MovimentoEstoque[]
   comprasItens   CompraItem[]
+  vendaItens     VendaItem[]
 
   @@index([nome])
   @@map("pecas")
@@ -227,58 +287,60 @@ model Peca {
 // ---------------------- ORÇAMENTO ----------------------
 
 model Orcamento {
-  id          String          @id @default(cuid())
-  numero      Int             @unique @default(autoincrement())
+  id               String          @id @default(cuid())
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao           Int             @default(0)
+  numero           Int             @unique @default(autoincrement())
   // Opcionais por causa do ORÇAMENTO RÁPIDO: quem só quer saber um preço no
   // balcão ou por telefone não precisa passar por dois cadastros antes.
   // Vira OS só depois de identificar o cliente e o veículo.
-  clienteId   String?         @map("cliente_id")
-  carroId     String?         @map("carro_id")
+  clienteId        String?         @map("cliente_id")
+  carroId          String?         @map("carro_id")
   // Identificação solta do orçamento rápido — texto livre, não cria cadastro.
-  // Serve para o atendente saber de quem era quando o cliente voltar.
-  contatoNome      String?    @map("contato_nome")
-  contatoTelefone  String?    @map("contato_telefone")
-  veiculoDescricao String?    @map("veiculo_descricao")
-  data        DateTime        @default(now())
-  validade    DateTime
-  status      StatusOrcamento @default(RASCUNHO)
-  subtotal    Decimal         @default(0) @db.Decimal(10, 2)
-  desconto    Decimal         @default(0) @db.Decimal(10, 2)
-  total       Decimal         @default(0) @db.Decimal(10, 2)
-  observacoes String?
+  contatoNome      String?         @map("contato_nome")
+  contatoTelefone  String?         @map("contato_telefone")
+  veiculoDescricao String?         @map("veiculo_descricao")
+  data             DateTime        @default(now())
+  validade         DateTime
+  status           StatusOrcamento @default(RASCUNHO)
+  subtotal         Decimal         @default(0) @db.Decimal(10, 2)
+  desconto         Decimal         @default(0) @db.Decimal(10, 2)
+  total            Decimal         @default(0) @db.Decimal(10, 2)
+  observacoes      String?
 
-  cliente     Cliente?        @relation(fields: [clienteId], references: [id])
-  carro       Carro?          @relation(fields: [carroId], references: [id])
-  servicos    OrcamentoServico[]
-  pecas       OrcamentoPeca[]
-  ordem       OrdemServico?
+  cliente  Cliente?           @relation(fields: [clienteId], references: [id])
+  carro    Carro?             @relation(fields: [carroId], references: [id])
+  servicos OrcamentoServico[]
+  pecas    OrcamentoPeca[]
+  ordem    OrdemServico?
 
   @@index([clienteId])
+  @@index([status, validade])
   @@map("orcamentos")
 }
 
 model OrcamentoServico {
-  id          String    @id @default(cuid())
-  orcamentoId String    @map("orcamento_id")
-  servicoId   String    @map("servico_id")
-  quantidade  Int       @default(1)
-  precoUnit   Decimal   @map("preco_unit") @db.Decimal(10, 2)
+  id          String  @id @default(cuid())
+  orcamentoId String  @map("orcamento_id")
+  servicoId   String  @map("servico_id")
+  quantidade  Int     @default(1)
+  precoUnit   Decimal @map("preco_unit") @db.Decimal(10, 2)
 
-  orcamento   Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
-  servico     Servico   @relation(fields: [servicoId], references: [id])
+  orcamento Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  servico   Servico   @relation(fields: [servicoId], references: [id])
 
   @@map("orcamento_servicos")
 }
 
 model OrcamentoPeca {
-  id          String    @id @default(cuid())
-  orcamentoId String    @map("orcamento_id")
-  pecaId      String    @map("peca_id")
-  quantidade  Int       @default(1)
-  precoUnit   Decimal   @map("preco_unit") @db.Decimal(10, 2)
+  id          String  @id @default(cuid())
+  orcamentoId String  @map("orcamento_id")
+  pecaId      String  @map("peca_id")
+  quantidade  Decimal @default(1) @db.Decimal(10, 3)
+  precoUnit   Decimal @map("preco_unit") @db.Decimal(10, 2)
 
-  orcamento   Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
-  peca        Peca      @relation(fields: [pecaId], references: [id])
+  orcamento Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+  peca      Peca      @relation(fields: [pecaId], references: [id])
 
   @@map("orcamento_pecas")
 }
@@ -286,72 +348,137 @@ model OrcamentoPeca {
 // ---------------------- ORDEM DE SERVIÇO ----------------------
 
 model OrdemServico {
-  id            String         @id @default(cuid())
-  numero        Int            @unique @default(autoincrement())
-  orcamentoId   String?        @unique @map("orcamento_id")
-  clienteId     String         @map("cliente_id")
-  carroId       String         @map("carro_id")
-  mecanicoId    String?        @map("mecanico_id")
-  dataAbertura  DateTime       @default(now()) @map("data_abertura")
-  dataPrevista  DateTime?      @map("data_prevista")
-  dataConclusao DateTime?      @map("data_conclusao")
-  status        StatusOS       @default(ABERTA)
-  kmEntrada     Int?           @map("km_entrada")
-  total         Decimal        @default(0) @db.Decimal(10, 2)
-  formaPagamento FormaPagamento? @map("forma_pagamento")
-  pago          Boolean        @default(false)
-  garantia      Boolean        @default(false)
-  // RN-18: OS de garantia aponta para a OS que a originou, para o histórico
-  // do veículo mostrar "voltou pelo mesmo problema".
-  osOrigemId    String?        @map("os_origem_id")
+  id                 String          @id @default(cuid())
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao             Int             @default(0)
+  numero             Int             @unique @default(autoincrement())
+  orcamentoId        String?         @unique @map("orcamento_id")
+  clienteId          String          @map("cliente_id")
+  carroId            String          @map("carro_id")
+  mecanicoId         String?         @map("mecanico_id")
+  dataAbertura       DateTime        @default(now()) @map("data_abertura")
+  dataPrevista       DateTime?       @map("data_prevista")
+  dataConclusao      DateTime?       @map("data_conclusao")
+  dataEntrega        DateTime?       @map("data_entrega")
+  status             StatusOS        @default(ABERTA)
+  kmEntrada          Int?            @map("km_entrada")
+  // A queixa do cliente, com as palavras dele ("barulho ao frear").
+  defeitoRelatado    String?         @map("defeito_relatado")
+  // Laudo / diagnóstico do mecânico.
+  observacoes        String?
+  subtotal           Decimal         @default(0) @db.Decimal(10, 2)
+  desconto           Decimal         @default(0) @db.Decimal(10, 2)
+  total              Decimal         @default(0) @db.Decimal(10, 2)
+  // null = pagamento ainda não registrado. Preenchida, o "receber" já foi feito.
+  formaPagamento     FormaPagamento? @map("forma_pagamento")
+  // true quando não falta mais nada a receber (à vista, ou última parcela paga).
+  pago               Boolean         @default(false)
+  garantia           Boolean         @default(false)
+  // RN-18: OS de garantia aponta para a OS que a originou.
+  osOrigemId         String?         @map("os_origem_id")
+  canceladaEm        DateTime?       @map("cancelada_em")
+  motivoCancelamento String?         @map("motivo_cancelamento")
 
-  orcamento     Orcamento?     @relation(fields: [orcamentoId], references: [id])
-  osOrigem      OrdemServico?  @relation("OSGarantia", fields: [osOrigemId], references: [id])
-  garantias     OrdemServico[] @relation("OSGarantia")
-  cliente       Cliente        @relation(fields: [clienteId], references: [id])
-  carro         Carro          @relation(fields: [carroId], references: [id])
-  mecanico      Usuario?       @relation("MecanicoResponsavel", fields: [mecanicoId], references: [id])
+  orcamento     Orcamento?         @relation(fields: [orcamentoId], references: [id])
+  osOrigem      OrdemServico?      @relation("OSGarantia", fields: [osOrigemId], references: [id])
+  garantias     OrdemServico[]     @relation("OSGarantia")
+  cliente       Cliente            @relation(fields: [clienteId], references: [id])
+  carro         Carro              @relation(fields: [carroId], references: [id])
+  mecanico      Usuario?           @relation("MecanicoResponsavel", fields: [mecanicoId], references: [id])
   servicos      OSServico[]
   pecas         OSPeca[]
-  lancamento    LancamentoCaixa?
+  lancamentos   LancamentoCaixa[]
   contasReceber ContaReceber[]
+  movimentos    MovimentoEstoque[]
 
   @@index([status])
   @@index([clienteId])
+  @@index([carroId])
+  @@index([mecanicoId])
+  @@index([dataAbertura])
   @@map("ordens_servico")
 }
 
 model OSServico {
-  id         String       @id @default(cuid())
-  osId       String       @map("os_id")
-  servicoId  String       @map("servico_id")
-  quantidade Int          @default(1)
-  precoUnit  Decimal      @map("preco_unit") @db.Decimal(10, 2)
-  concluido  Boolean      @default(false)
+  id         String  @id @default(cuid())
+  osId       String  @map("os_id")
+  servicoId  String  @map("servico_id")
+  quantidade Int     @default(1)
+  precoUnit  Decimal @map("preco_unit") @db.Decimal(10, 2)
+  // Apontamento do mecânico: este serviço está feito.
+  concluido  Boolean @default(false)
 
-  os         OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
-  servico    Servico      @relation(fields: [servicoId], references: [id])
+  os      OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+  servico Servico      @relation(fields: [servicoId], references: [id])
 
   @@map("os_servicos")
 }
 
 model OSPeca {
-  id         String       @id @default(cuid())
-  osId       String       @map("os_id")
-  pecaId     String       @map("peca_id")
-  quantidade Int          @default(1)
-  precoUnit  Decimal      @map("preco_unit") @db.Decimal(10, 2)
+  id         String   @id @default(cuid())
+  osId       String   @map("os_id")
+  pecaId     String   @map("peca_id")
+  quantidade Decimal  @default(1) @db.Decimal(10, 3)
+  precoUnit  Decimal  @map("preco_unit") @db.Decimal(10, 2)
+  // Custo médio da peça no momento da baixa — a margem do relatório não
+  // muda depois porque a peça ficou mais cara.
+  custoUnit  Decimal? @map("custo_unit") @db.Decimal(10, 2)
 
-  os         OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
-  peca       Peca         @relation(fields: [pecaId], references: [id])
+  os   OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+  peca Peca         @relation(fields: [pecaId], references: [id])
 
   @@map("os_pecas")
+}
+
+// ---------------------- VENDA DE BALCÃO ----------------------
+
+// Peça vendida sem OS (o cliente leva a peça). Baixa o estoque e entra
+// no caixa na hora. Cancelar devolve a peça e estorna o dinheiro.
+model Venda {
+  id                 String         @id @default(cuid())
+  numero             Int            @unique @default(autoincrement())
+  data               DateTime       @default(now())
+  clienteId          String?        @map("cliente_id")
+  usuarioId          String?        @map("usuario_id")
+  subtotal           Decimal        @db.Decimal(10, 2)
+  desconto           Decimal        @default(0) @db.Decimal(10, 2)
+  total              Decimal        @db.Decimal(10, 2)
+  formaPagamento     FormaPagamento @map("forma_pagamento")
+  observacoes        String?
+  canceladaEm        DateTime?      @map("cancelada_em")
+  motivoCancelamento String?        @map("motivo_cancelamento")
+
+  cliente     Cliente?           @relation(fields: [clienteId], references: [id])
+  usuario     Usuario?           @relation(fields: [usuarioId], references: [id])
+  itens       VendaItem[]
+  lancamentos LancamentoCaixa[]
+  movimentos  MovimentoEstoque[]
+
+  @@index([data])
+  @@map("vendas")
+}
+
+model VendaItem {
+  id         String   @id @default(cuid())
+  vendaId    String   @map("venda_id")
+  pecaId     String   @map("peca_id")
+  quantidade Decimal  @db.Decimal(10, 3)
+  precoUnit  Decimal  @map("preco_unit") @db.Decimal(10, 2)
+  custoUnit  Decimal? @map("custo_unit") @db.Decimal(10, 2)
+
+  venda Venda @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+  peca  Peca  @relation(fields: [pecaId], references: [id])
+
+  @@index([vendaId])
+  @@map("venda_itens")
 }
 
 // ---------------------- AGENDA / VISITAS ----------------------
 
 model Visita {
   id          String       @id @default(cuid())
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao      Int          @default(0)
   clienteId   String       @map("cliente_id")
   carroId     String?      @map("carro_id")
   dataHora    DateTime     @map("data_hora")
@@ -359,8 +486,8 @@ model Visita {
   status      StatusVisita @default(AGENDADA)
   observacoes String?
 
-  cliente     Cliente      @relation(fields: [clienteId], references: [id])
-  carro       Carro?       @relation(fields: [carroId], references: [id])
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+  carro   Carro?  @relation(fields: [carroId], references: [id])
 
   @@index([dataHora])
   @@map("visitas")
@@ -368,75 +495,111 @@ model Visita {
 
 // ---------------------- FINANCEIRO ----------------------
 
+// Livro-caixa. Toda entrada e saída de dinheiro passa por aqui, e cada
+// lançamento aponta para o que o originou (OS, parcela, despesa, compra,
+// venda) — é o que permite estornar e explicar "de onde veio isso".
 model LancamentoCaixa {
-  id            String           @id @default(cuid())
-  data          DateTime         @default(now())
-  tipo          TipoLancamento
-  origem        OrigemLancamento
-  descricao     String
-  valor         Decimal          @db.Decimal(10, 2)
-  formaPagamento FormaPagamento? @map("forma_pagamento")
-  categoria     String?
-  osId          String?          @unique @map("os_id")
-  usuarioId     String?          @map("usuario_id")
+  id             String           @id @default(cuid())
+  data           DateTime         @default(now())
+  tipo           TipoLancamento
+  origem         OrigemLancamento
+  descricao      String
+  valor          Decimal          @db.Decimal(10, 2)
+  formaPagamento FormaPagamento?  @map("forma_pagamento")
+  categoria      String?
+  osId           String?          @map("os_id")
+  contaReceberId String?          @map("conta_receber_id")
+  despesaId      String?          @map("despesa_id")
+  compraId       String?          @map("compra_id")
+  vendaId        String?          @map("venda_id")
+  usuarioId      String?          @map("usuario_id")
 
-  os            OrdemServico?    @relation(fields: [osId], references: [id])
-  usuario       Usuario?         @relation(fields: [usuarioId], references: [id])
+  os           OrdemServico? @relation(fields: [osId], references: [id])
+  contaReceber ContaReceber? @relation(fields: [contaReceberId], references: [id])
+  despesa      Despesa?      @relation(fields: [despesaId], references: [id])
+  compra       Compra?       @relation(fields: [compraId], references: [id])
+  venda        Venda?        @relation(fields: [vendaId], references: [id])
+  usuario      Usuario?      @relation(fields: [usuarioId], references: [id])
 
   @@index([data])
+  @@index([osId])
+  @@index([contaReceberId])
   @@map("lancamentos_caixa")
 }
 
 model Despesa {
-  id           String      @id @default(cuid())
-  data         DateTime    @default(now())
-  categoria    String
-  descricao    String
-  valor        Decimal     @db.Decimal(10, 2)
-  fornecedorId String?     @map("fornecedor_id")
-  recorrente   Boolean     @default(false)
-  pago         Boolean     @default(false)
+  id             String          @id @default(cuid())
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao         Int             @default(0)
+  // Vencimento (ou data da despesa).
+  data           DateTime        @default(now())
+  categoria      String
+  descricao      String
+  valor          Decimal         @db.Decimal(10, 2)
+  fornecedorId   String?         @map("fornecedor_id")
+  recorrente     Boolean         @default(false)
+  pago           Boolean         @default(false)
+  pagoEm         DateTime?       @map("pago_em")
+  formaPagamento FormaPagamento? @map("forma_pagamento")
 
-  fornecedor   Fornecedor? @relation(fields: [fornecedorId], references: [id])
+  fornecedor  Fornecedor?       @relation(fields: [fornecedorId], references: [id])
+  lancamentos LancamentoCaixa[]
 
   @@index([data])
   @@map("despesas")
 }
 
-// Contas a Receber — parcelas de parcelado/fiado (RN-11.1 / RN-11.2)
+// Contas a Receber — parcelas de parcelado/fiado (RN-11.1 / RN-11.2).
+// Aceita baixa parcial: `valorPago` acumula até igualar `valor`.
 model ContaReceber {
-  id          String        @id @default(cuid())
-  clienteId   String        @map("cliente_id")
-  osId        String?       @map("os_id")
-  parcela     Int           @default(1)
-  totalParcelas Int         @default(1) @map("total_parcelas")
-  vencimento  DateTime
-  valor       Decimal       @db.Decimal(10, 2)
-  status      StatusParcela @default(PENDENTE)
-  pagoEm      DateTime?     @map("pago_em")
+  id            String        @id @default(cuid())
+  clienteId     String        @map("cliente_id")
+  osId          String?       @map("os_id")
+  // Fiado lançado à mão (ex.: o caderno antigo, na implantação).
+  descricao     String?
+  parcela       Int           @default(1)
+  totalParcelas Int           @default(1) @map("total_parcelas")
+  vencimento    DateTime
+  valor         Decimal       @db.Decimal(10, 2)
+  valorPago     Decimal       @default(0) @map("valor_pago") @db.Decimal(10, 2)
+  status        StatusParcela @default(PENDENTE)
+  pagoEm        DateTime?     @map("pago_em")
 
-  cliente     Cliente       @relation(fields: [clienteId], references: [id])
-  os          OrdemServico? @relation(fields: [osId], references: [id])
+  cliente     Cliente           @relation(fields: [clienteId], references: [id])
+  os          OrdemServico?     @relation(fields: [osId], references: [id])
+  lancamentos LancamentoCaixa[]
 
   @@index([clienteId])
   @@index([vencimento])
+  @@index([osId])
   @@map("contas_receber")
 }
 
 // ---------------------- ESTOQUE ----------------------
 
+// Kardex: cada mudança de quantidade de uma peça, com o saldo depois dela.
 model MovimentoEstoque {
-  id            String               @id @default(cuid())
-  pecaId        String               @map("peca_id")
-  tipo          TipoMovimentoEstoque
-  quantidade    Int
-  custoUnit     Decimal?             @map("custo_unit") @db.Decimal(10, 2)
-  motivo        String?
-  data          DateTime             @default(now())
+  id         String               @id @default(cuid())
+  pecaId     String               @map("peca_id")
+  tipo       TipoMovimentoEstoque
+  // Positivo em ENTRADA/SAIDA; no AJUSTE, a diferença com sinal.
+  quantidade Decimal              @db.Decimal(12, 3)
+  saldoApos  Decimal?             @map("saldo_apos") @db.Decimal(12, 3)
+  custoUnit  Decimal?             @map("custo_unit") @db.Decimal(10, 2)
+  motivo     String?
+  data       DateTime             @default(now())
+  usuarioId  String?              @map("usuario_id")
+  osId       String?              @map("os_id")
+  compraId   String?              @map("compra_id")
+  vendaId    String?              @map("venda_id")
 
-  peca          Peca                 @relation(fields: [pecaId], references: [id])
+  peca    Peca          @relation(fields: [pecaId], references: [id])
+  usuario Usuario?      @relation(fields: [usuarioId], references: [id])
+  os      OrdemServico? @relation(fields: [osId], references: [id])
+  compra  Compra?       @relation(fields: [compraId], references: [id])
+  venda   Venda?        @relation(fields: [vendaId], references: [id])
 
-  @@index([pecaId])
+  @@index([pecaId, data])
   @@map("movimentos_estoque")
 }
 
@@ -445,18 +608,22 @@ model MovimentoEstoque {
 // Nota de entrada de peças de um distribuidor. Os itens dão entrada no
 // estoque ao registrar; o dinheiro só sai do caixa quando a compra é paga.
 model Compra {
-  id           String       @id @default(cuid())
-  numero       Int          @unique @default(autoincrement())
-  fornecedorId String       @map("fornecedor_id")
-  data         DateTime     @default(now())
-  numeroNota   String?      @map("numero_nota")
-  valorTotal   Decimal      @map("valor_total") @db.Decimal(10, 2)
-  status       StatusCompra @default(PENDENTE)
-  pagoEm       DateTime?    @map("pago_em")
-  observacoes  String?
+  id             String          @id @default(cuid())
+  numero         Int             @unique @default(autoincrement())
+  fornecedorId   String          @map("fornecedor_id")
+  data           DateTime        @default(now())
+  vencimento     DateTime?
+  numeroNota     String?         @map("numero_nota")
+  valorTotal     Decimal         @map("valor_total") @db.Decimal(10, 2)
+  status         StatusCompra    @default(PENDENTE)
+  pagoEm         DateTime?       @map("pago_em")
+  formaPagamento FormaPagamento? @map("forma_pagamento")
+  observacoes    String?
 
-  fornecedor   Fornecedor   @relation(fields: [fornecedorId], references: [id])
-  itens        CompraItem[]
+  fornecedor  Fornecedor         @relation(fields: [fornecedorId], references: [id])
+  itens       CompraItem[]
+  lancamentos LancamentoCaixa[]
+  movimentos  MovimentoEstoque[]
 
   @@index([fornecedorId])
   @@index([data])
@@ -467,11 +634,11 @@ model CompraItem {
   id         String  @id @default(cuid())
   compraId   String  @map("compra_id")
   pecaId     String  @map("peca_id")
-  quantidade Int
+  quantidade Decimal @db.Decimal(10, 3)
   custoUnit  Decimal @map("custo_unit") @db.Decimal(10, 2)
 
-  compra     Compra  @relation(fields: [compraId], references: [id], onDelete: Cascade)
-  peca       Peca    @relation(fields: [pecaId], references: [id])
+  compra Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  peca   Peca   @relation(fields: [pecaId], references: [id])
 
   @@index([compraId])
   @@map("compra_itens")
@@ -480,42 +647,71 @@ model CompraItem {
 // ---------------------- AUDITORIA ----------------------
 
 model LogAuditoria {
-  id        String   @id @default(cuid())
-  usuarioId String?  @map("usuario_id")
-  acao      String
-  entidade  String
-  entidadeId String? @map("entidade_id")
-  detalhes  String?
-  data      DateTime @default(now())
+  id         String   @id @default(cuid())
+  usuarioId  String?  @map("usuario_id")
+  acao       String
+  entidade   String
+  entidadeId String?  @map("entidade_id")
+  detalhes   String?
+  // O que mudou no registro, já legível: [{ campo, de, para }] (valor anterior → novo).
+  mudancas   Json?
+  data       DateTime @default(now())
 
-  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
 
   @@index([data])
+  @@index([entidade])
   @@map("logs_auditoria")
+}
+
+// Idempotência (ADR 0011): a tela manda uma chave em todo POST e repete a
+// MESMA chave se a rede falhar. Repetição devolve a resposta guardada em vez
+// de lançar a venda/recebimento de novo. Vale 24 h.
+model ChaveIdempotencia {
+  chave     String
+  usuarioId String   @map("usuario_id")
+  // "POST /api/vendas" — a mesma chave em outra rota é recusada.
+  rota      String
+  // Hash do corpo: a mesma chave com outro corpo é recusada.
+  hashCorpo String   @map("hash_corpo")
+  // null = ainda processando.
+  status    Int?
+  resposta  String?
+  criadaEm  DateTime @default(now()) @map("criada_em")
+
+  @@id([usuarioId, chave])
+  @@index([criadaEm])
+  @@map("chaves_idempotencia")
 }
 
 // ============================================================
 // Configuração da oficina — uma linha só (id fixo "unica").
 // Tira do código o que é do negócio: identidade no documento
-// impresso, margem sugerida, teto de desconto (RN-08) e prazo
-// de garantia (RN-18).
+// impresso, margem sugerida, teto de desconto (RN-08), prazo
+// de garantia (RN-18) e validade do orçamento (RN-06).
 // ============================================================
 model Oficina {
-  id                  String   @id @default("unica")
-  nome                String   @default("Minha Oficina")
-  subtitulo           String?
-  cnpj                String?
-  telefone            String?
-  email               String?
-  endereco            String?
+  id                    String   @id @default("unica")
+  // Concorrência otimista (ADR 0010): sobe a cada gravação do formulário.
+  versao                Int      @default(0)
+  nome                  String   @default("Minha Oficina")
+  subtitulo             String?
+  cnpj                  String?
+  telefone              String?
+  email                 String?
+  endereco              String?
   // Logo em data URI (base64). Vai no cabeçalho do orçamento e da OS.
-  logo                String?
-  margemPadrao        Decimal  @default(80) @db.Decimal(5, 2) @map("margem_padrao")
+  logo                  String?
+  // Rodapé do orçamento e da OS (condições, garantia...).
+  observacoesDocumento  String?  @map("observacoes_documento")
+  margemPadrao          Decimal  @default(80) @map("margem_padrao") @db.Decimal(5, 2)
   // RN-08: acima deste percentual, o desconto exige a senha do Dono.
-  descontoMaxSemSenha Decimal  @default(10) @db.Decimal(5, 2) @map("desconto_max_sem_senha")
+  descontoMaxSemSenha   Decimal  @default(10) @map("desconto_max_sem_senha") @db.Decimal(5, 2)
   // RN-18: dias de garantia do serviço.
-  garantiaDias        Int      @default(15) @map("garantia_dias")
-  atualizadoEm        DateTime @updatedAt @map("atualizado_em")
+  garantiaDias          Int      @default(15) @map("garantia_dias")
+  // RN-06: validade padrão do orçamento.
+  validadeOrcamentoDias Int      @default(15) @map("validade_orcamento_dias")
+  atualizadoEm          DateTime @updatedAt @map("atualizado_em")
 
   @@map("oficina")
 }

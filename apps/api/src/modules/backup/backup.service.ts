@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process';
-import { createWriteStream } from 'node:fs';
-import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { appendFile, mkdir, readdir, rename, stat, unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { resolve, join } from 'node:path';
 import { env } from '../../lib/env.js';
-import { AppError } from '../../lib/errors.js';
+import type { StatusBackupDTO } from '@hermes/shared';
+import { AppError, naoEncontrado } from '../../lib/errors.js';
+import { novaCifra } from '../../lib/cofre.js';
 
 // ============================================================
 // Backup do banco (Fase 5) — o seguro contra "o PC da oficina morreu".
@@ -13,9 +15,19 @@ import { AppError } from '../../lib/errors.js';
 
 const PREFIXO = 'hermes-';
 const SUFIXO = '.sql';
+/** Com BACKUP_SENHA: a mesma cópia, cifrada (lib/cofre.ts). */
+const SUFIXO_CIFRADO = '.sql.enc';
 const PARCIAL = '.parcial'; // dump ainda em andamento; vira .sql só quando termina
 const MINIMO_MANTIDO = 3; // nunca deixa a pasta sem cópia, mesmo com retenção curta
 const UMA_HORA = 60 * 60 * 1000;
+/**
+ * --clean --if-exists: o arquivo restaura "por cima" de um banco existente.
+ * --no-owner --no-privileges: restaura com qualquer usuário (outro servidor, nuvem).
+ */
+const OPCOES_DUMP = ['--clean', '--if-exists', '--no-owner', '--no-privileges'];
+/** Só nomes gerados por nós: bloqueia "../" e afins no download. */
+const NOME_VALIDO = /^hermes-\d{4}-\d{2}-\d{2}_\d{6}\.sql(\.enc)?$/;
+const ehBackup = (nome: string) => nome.startsWith(PREFIXO) && (nome.endsWith(SUFIXO) || nome.endsWith(SUFIXO_CIFRADO));
 const UM_DIA = 24 * UMA_HORA;
 
 export interface ArquivoBackup {
@@ -50,7 +62,7 @@ function nomeArquivo(agora: Date) {
   const p = (n: number) => String(n).padStart(2, '0');
   const data = `${agora.getFullYear()}-${p(agora.getMonth() + 1)}-${p(agora.getDate())}`;
   const hora = `${p(agora.getHours())}${p(agora.getMinutes())}${p(agora.getSeconds())}`;
-  return `${PREFIXO}${data}_${hora}${SUFIXO}`;
+  return `${PREFIXO}${data}_${hora}${env.BACKUP_SENHA ? SUFIXO_CIFRADO : SUFIXO}`;
 }
 
 /**
@@ -60,6 +72,8 @@ function nomeArquivo(agora: Date) {
  * truncado é pior que nenhum, porque parece que existe.
  */
 async function dumpPara(destino: string, comando: string, args: string[], extraEnv: Record<string, string>) {
+  // Com BACKUP_SENHA, o SQL passa pela cifra no caminho: nunca toca o disco em claro.
+  const cofre = env.BACKUP_SENHA ? await novaCifra(env.BACKUP_SENHA) : null;
   const proc = spawn(comando, args, { env: { ...process.env, ...extraEnv } });
 
   let erro = '';
@@ -72,13 +86,16 @@ async function dumpPara(destino: string, comando: string, args: string[], extraE
     proc.on('close', (code) => ok(code ?? -1));
   });
   const saida = createWriteStream(destino);
-  const gravou = pipeline(proc.stdout, saida);
+  if (cofre) saida.write(cofre.cabecalho);
+  const gravou = cofre ? pipeline(proc.stdout, cofre.cifra, saida) : pipeline(proc.stdout, saida);
 
   try {
     const [code] = await Promise.all([encerrou, gravou]);
     if (code !== 0) {
       throw new AppError(500, `pg_dump falhou (código ${code}): ${erro.trim() || 'sem detalhes'}`);
     }
+    // A etiqueta de autenticidade do GCM fecha o arquivo.
+    if (cofre) await appendFile(destino, cofre.cifra.getAuthTag());
   } catch (err) {
     // O Windows não deixa apagar arquivo com handle aberto: fecha a gravação
     // e espera ela terminar antes de remover o pedaço que sobrou.
@@ -100,7 +117,7 @@ async function gerarDump(destino: string) {
 
   if (ehLocal) {
     try {
-      const args = ['exec', '-e', `PGPASSWORD=${senha}`, env.BACKUP_CONTAINER, 'pg_dump', '-U', usuario, '-d', banco];
+      const args = ['exec', '-e', `PGPASSWORD=${senha}`, env.BACKUP_CONTAINER, 'pg_dump', '-U', usuario, '-d', banco, ...OPCOES_DUMP];
       await dumpPara(destino, 'docker', args, {});
       return 'docker';
     } catch {
@@ -108,7 +125,7 @@ async function gerarDump(destino: string) {
     }
   }
 
-  const args = ['-h', host, '-p', porta, '-U', usuario, '-d', banco];
+  const args = ['-h', host, '-p', porta, '-U', usuario, '-d', banco, ...OPCOES_DUMP];
   await dumpPara(destino, 'pg_dump', args, { PGPASSWORD: senha });
   return 'pg_dump';
 }
@@ -141,7 +158,7 @@ export async function listarBackups(): Promise<ArquivoBackup[]> {
   const pasta = pastaBackup();
   await mkdir(pasta, { recursive: true });
 
-  const nomes = (await readdir(pasta)).filter((n) => n.startsWith(PREFIXO) && n.endsWith(SUFIXO));
+  const nomes = (await readdir(pasta)).filter(ehBackup);
   const arquivos = await Promise.all(
     nomes.map(async (arquivo) => {
       const info = await stat(join(pasta, arquivo));
@@ -179,14 +196,24 @@ export async function gerarBackup() {
   }
 }
 
+/** Abre um backup para download (o Dono guarda fora do computador da oficina). */
+export async function abrirArquivo(nome: string) {
+  if (!NOME_VALIDO.test(nome)) throw naoEncontrado('Arquivo de backup não encontrado');
+  const caminho = join(pastaBackup(), nome);
+  const info = await stat(caminho).catch(() => null);
+  if (!info) throw naoEncontrado('Arquivo de backup não encontrado');
+  return { stream: createReadStream(caminho), bytes: info.size };
+}
+
 /** Situação do backup, para a tela mostrar ("último backup: hoje 09:12"). */
-export async function statusBackup() {
+export async function statusBackup(): Promise<StatusBackupDTO> {
   const arquivos = await listarBackups();
   const ultimo = arquivos[0] ?? null;
   const atrasado = !ultimo || Date.now() - new Date(ultimo.criadoEm).getTime() > UM_DIA;
 
   return {
     ativo: env.BACKUP_ENABLED,
+    criptografado: !!env.BACKUP_SENHA,
     pasta: pastaBackup(),
     retencaoDias: env.BACKUP_RETENCAO_DIAS,
     ultimo,

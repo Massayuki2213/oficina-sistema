@@ -1,21 +1,23 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { VERSAO, type SaudeDTO } from '@hermes/shared';
 import { prisma } from '../../lib/prisma.js';
-import { redis } from '../../lib/redis.js';
+import { env } from '../../lib/env.js';
 
-export async function healthRoutes(app: FastifyInstance) {
-  // Verifica se API, banco e cache estão de pé.
-  app.get('/health', async () => {
-    const [db, cache] = await Promise.allSettled([
-      prisma.$queryRaw`SELECT 1`,
-      redis.ping(),
-    ]);
-
-    return {
-      status: 'ok',
-      service: 'hermes-api',
-      database: db.status === 'fulfilled' ? 'up' : 'down',
-      cache: cache.status === 'fulfilled' ? 'up' : 'down',
-      timestamp: new Date().toISOString(),
+export const healthRoutes: FastifyPluginAsyncZod = async (app) => {
+  // GET /api/health — a API e o banco estão de pé? Usado pelo Docker, pelo
+  // app desktop (antes de abrir a janela) e por quem monitora o servidor.
+  app.get('/health', { schema: { tags: ['Sistema'] }, config: { publica: true } }, async (_req, reply) => {
+    const banco = await prisma.$queryRaw`SELECT 1`.then(
+      () => 'up' as const,
+      () => 'down' as const,
+    );
+    const corpo: SaudeDTO = {
+      status: banco === 'up' ? 'ok' : 'degradado',
+      versao: VERSAO,
+      banco,
+      horario: new Date().toISOString(),
+      fuso: env.TZ,
     };
+    return reply.code(banco === 'up' ? 200 : 503).send(corpo);
   });
-}
+};

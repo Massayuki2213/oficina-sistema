@@ -1,54 +1,27 @@
-import type { FastifyInstance } from 'fastify';
-import { Prisma } from '@prisma/client';
-import { authenticate, requirePermission } from '../../lib/auth.js';
-import { createFornecedorSchema, updateFornecedorSchema } from './fornecedores.schema.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { fornecedorSchema, idParams } from '@hermes/shared/schemas';
+import { exigir, exigirAlguma } from '../../plugins/autenticacao.js';
 import * as service from './fornecedores.service.js';
 
-function isNotFound(err: unknown) {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
-}
+const tags = ['Distribuidores'];
 
-export async function fornecedoresRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', authenticate);
+export const fornecedoresRoutes: FastifyPluginAsyncZod = async (app) => {
+  // Distribuidor é assunto de compra e custo — e mostra quanto a oficina deve.
+  app.addHook('onRequest', exigirAlguma('alterarPrecoCusto', 'verFinanceiro'));
 
-  // GET /fornecedores — lista com o total devido (compras pendentes) por distribuidor
-  app.get('/', async () => service.listFornecedores());
+  app.get('/', { schema: { tags } }, () => service.listar());
+  app.get('/:id', { schema: { tags, params: idParams } }, (req) => service.buscar(req.params.id));
 
-  // GET /fornecedores/:id
-  app.get('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const forn = await service.getFornecedor(id);
-    if (!forn) return reply.code(404).send({ message: 'Distribuidor não encontrado' });
-    return forn;
-  });
-
-  // Cadastrar/editar mexe no cadastro de custo/compra: exige alterarPrecoCusto (Dono).
-  app.post('/', { preHandler: [requirePermission('alterarPrecoCusto')] }, async (req, reply) => {
-    const parsed = createFornecedorSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return reply.code(201).send(await service.createFornecedor(parsed.data));
-  });
-
-  app.put('/:id', { preHandler: [requirePermission('alterarPrecoCusto')] }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = updateFornecedorSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    try {
-      return await service.updateFornecedor(id, parsed.data);
-    } catch (err) {
-      if (isNotFound(err)) return reply.code(404).send({ message: 'Distribuidor não encontrado' });
-      throw err;
-    }
-  });
-
-  // DELETE — exclusão definitiva, restrita a quem pode apagar (Dono).
-  app.delete('/:id', { preHandler: [requirePermission('apagarRegistros')] }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    await service.deleteFornecedor(id);
+  app.post('/', { onRequest: exigir('alterarPrecoCusto'), schema: { tags, body: fornecedorSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criar(req.body)),
+  );
+  app.put(
+    '/:id',
+    { onRequest: exigir('alterarPrecoCusto'), schema: { tags, params: idParams, body: fornecedorSchema } },
+    (req) => service.atualizar(req.params.id, req.body),
+  );
+  app.delete('/:id', { onRequest: exigir('apagarRegistros'), schema: { tags, params: idParams } }, async (req, reply) => {
+    await service.excluir(req.params.id);
     return reply.code(204).send();
   });
-}
+};

@@ -1,70 +1,110 @@
-import type { FastifyInstance } from 'fastify';
-import type { StatusOS } from '@prisma/client';
-import { authenticate } from '../../lib/auth.js';
-import { mudarStatusSchema, atribuirMecanicoSchema, receberSchema } from './ordens.schema.js';
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import {
+  abrirGarantiaSchema,
+  adicionarPecaOSSchema,
+  adicionarServicoOSSchema,
+  alterarPecaOSSchema,
+  alterarServicoOSSchema,
+  atribuirMecanicoSchema,
+  atualizarOSSchema,
+  cancelarOSSchema,
+  criarOSSchema,
+  estornarPagamentoSchema,
+  idParams,
+  itemParams,
+  listarOSQuery,
+  mudarStatusOSSchema,
+  receberOSSchema,
+} from '@hermes/shared/schemas';
+import { exigir } from '../../plugins/autenticacao.js';
 import * as service from './ordens.service.js';
 
-export async function ordensRoutes(app: FastifyInstance) {
-  app.addHook('preHandler', authenticate);
+const tags = ['Ordens de Serviço'];
 
-  // GET /ordens?busca=&status= — lista/filtra as OS
-  app.get('/', async (req) => {
-    const q = req.query as { busca?: string; status?: StatusOS };
-    return service.listOrdens(q.busca, q.status);
-  });
+export const ordensRoutes: FastifyPluginAsyncZod = async (app) => {
+  // Todo perfil entra aqui; o que cada um vê e faz é decidido no service
+  // (o mecânico enxerga só as OS dele e as sem mecânico).
+  const balcao = { onRequest: exigir('atender') };
 
-  // GET /ordens/:id — detalhe com itens, cliente, veículo e mecânico
-  app.get('/:id', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const os = await service.getOrdem(id);
-    if (!os) return reply.code(404).send({ message: 'Ordem de Serviço não encontrada' });
-    return os;
-  });
+  app.get('/', { schema: { tags, querystring: listarOSQuery } }, (req) => service.listar(req.query, req.usuario));
 
-  // PATCH /ordens/:id/status — avança o fluxo (iniciar/concluir/entregar/cancelar)
-  app.patch('/:id/status', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = mudarStatusSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return service.mudarStatus(id, parsed.data.status);
-  });
+  app.get('/:id', { schema: { tags, params: idParams } }, (req) => service.buscar(req.params.id, req.usuario));
 
-  // PATCH /ordens/:id/mecanico — atribui o mecânico responsável
-  app.patch('/:id/mecanico', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const parsed = atribuirMecanicoSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return service.atribuirMecanico(id, parsed.data.mecanicoId);
-  });
+  // POST /api/ordens — OS direta, sem orçamento.
+  app.post('/', { ...balcao, schema: { tags, body: criarOSSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criar(req.body, req.usuario)),
+  );
 
-  // POST /ordens/:id/receber — recebe o pagamento (RN-11). Mecânico não recebe.
-  // GET /ordens/:id/garantia — RN-18: dá para abrir garantia desta OS?
-  app.get('/:id/garantia', async (req) => {
-    const { id } = req.params as { id: string };
-    return service.situacaoGarantia(id);
-  });
+  // PATCH /api/ordens/:id — KM, queixa, laudo, previsão, desconto.
+  app.patch('/:id', { schema: { tags, params: idParams, body: atualizarOSSchema } }, (req) =>
+    service.atualizar(req.params.id, req.body, req.usuario),
+  );
 
-  // POST /ordens/:id/garantia — RN-18: abre a OS de garantia (sem cobrar)
-  app.post('/:id/garantia', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const { mecanicoId } = (req.body ?? {}) as { mecanicoId?: string };
-    const r = await service.abrirGarantia(id, mecanicoId);
-    return reply.code(201).send(r);
-  });
+  // ---- Itens ----
+  app.post(
+    '/:id/servicos',
+    { ...balcao, schema: { tags, params: idParams, body: adicionarServicoOSSchema }, config: { acao: 'ADICIONAR_SERVICO' } },
+    (req) => service.adicionarServico(req.params.id, req.body, req.usuario),
+  );
+  app.patch(
+    '/:id/servicos/:itemId',
+    { schema: { tags, params: itemParams, body: alterarServicoOSSchema }, config: { acao: 'ALTERAR_SERVICO' } },
+    (req) => service.alterarServico(req.params.id, req.params.itemId, req.body, req.usuario),
+  );
+  app.delete(
+    '/:id/servicos/:itemId',
+    { ...balcao, schema: { tags, params: itemParams }, config: { acao: 'REMOVER_SERVICO' } },
+    (req) => service.removerServico(req.params.id, req.params.itemId, req.usuario),
+  );
+  app.post(
+    '/:id/pecas',
+    { schema: { tags, params: idParams, body: adicionarPecaOSSchema }, config: { acao: 'ADICIONAR_PECA' } },
+    (req) => service.adicionarPeca(req.params.id, req.body, req.usuario),
+  );
+  app.patch(
+    '/:id/pecas/:itemId',
+    { schema: { tags, params: itemParams, body: alterarPecaOSSchema }, config: { acao: 'ALTERAR_PECA' } },
+    (req) => service.alterarPeca(req.params.id, req.params.itemId, req.body, req.usuario),
+  );
+  app.delete(
+    '/:id/pecas/:itemId',
+    { schema: { tags, params: itemParams }, config: { acao: 'REMOVER_PECA' } },
+    (req) => service.removerPeca(req.params.id, req.params.itemId, req.usuario),
+  );
 
-  app.post('/:id/receber', async (req, reply) => {
-    if (req.user.perfil === 'MECANICO') {
-      return reply.code(403).send({ message: 'Seu perfil não pode receber pagamentos' });
-    }
-    const { id } = req.params as { id: string };
-    const parsed = receberSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ message: 'Dados inválidos', erros: parsed.error.flatten().fieldErrors });
-    }
-    return service.receberPagamento(id, parsed.data, req.user.sub);
-  });
-}
+  // ---- Fluxo ----
+  app.patch('/:id/status', { schema: { tags, params: idParams, body: mudarStatusOSSchema } }, (req) =>
+    service.mudarStatus(req.params.id, req.body.status, req.usuario),
+  );
+  app.patch('/:id/mecanico', { ...balcao, schema: { tags, params: idParams, body: atribuirMecanicoSchema } }, (req) =>
+    service.atribuirMecanico(req.params.id, req.body.mecanicoId, req.usuario),
+  );
+  // POST /api/ordens/:id/assumir — o mecânico pega uma OS sem ninguém.
+  app.post('/:id/assumir', { schema: { tags, params: idParams } }, (req) => service.assumir(req.params.id, req.usuario));
+
+  app.post('/:id/cancelar', { ...balcao, schema: { tags, params: idParams, body: cancelarOSSchema } }, (req) =>
+    service.cancelar(req.params.id, req.body.motivo, req.usuario),
+  );
+
+  // ---- Dinheiro ----
+  // POST /api/ordens/:id/receber — RN-11: à vista, parcelado, fiado ou misto.
+  app.post(
+    '/:id/receber',
+    { onRequest: exigir('receberPagamentos'), schema: { tags, params: idParams, body: receberOSSchema } },
+    (req) => service.receber(req.params.id, req.body, req.usuario),
+  );
+  // POST /api/ordens/:id/estornar-pagamento — só o Dono desfaz dinheiro.
+  app.post(
+    '/:id/estornar-pagamento',
+    { onRequest: exigir('apagarRegistros'), schema: { tags, params: idParams, body: estornarPagamentoSchema } },
+    (req) => service.estornarPagamento(req.params.id, req.body.motivo, req.usuario),
+  );
+
+  // ---- Garantia (RN-18) ----
+  app.get('/:id/garantia', { schema: { tags, params: idParams } }, (req) =>
+    service.situacaoGarantia(req.params.id, req.usuario),
+  );
+  app.post('/:id/garantia', { ...balcao, schema: { tags, params: idParams, body: abrirGarantiaSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.abrirGarantia(req.params.id, req.body, req.usuario)),
+  );
+};
