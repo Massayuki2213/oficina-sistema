@@ -16,7 +16,8 @@ mas precisa saber abrir o terminal e copiar comandos.
 ```
 
 - **Um computador é o servidor**: guarda o banco e serve o sistema na porta `3333`.
-  Pode ser o PC do escritório (Windows com Docker Desktop) ou um mini-PC com Linux.
+  Pode ser um PC da própria oficina (Windows com Docker Desktop — veja os cuidados em
+  [1.1](#11-servidor-num-pc-da-própria-oficina-windows)) ou um mini-PC com Linux.
 - **Os outros aparelhos só abrem o sistema**: pelo app Hermes (Windows) ou pelo navegador,
   em `http://<ip-do-servidor>:3333`. Nada é instalado neles além do app.
 - Atualizar o servidor atualiza todo mundo.
@@ -34,6 +35,39 @@ mas precisa saber abrir o terminal e copiar comandos.
    ```
 
 4. Copie a pasta do projeto para o servidor (ou `git clone`).
+
+### 1.1 Servidor num PC da própria oficina (Windows)
+
+Funciona bem e não custa nada — desde que o PC aguente e ninguém o "desligue" do sistema.
+
+**Antes de instalar, confira** (Ctrl+Shift+Esc → *Desempenho*):
+
+| O quê | Onde ver | Precisa |
+|---|---|---|
+| Memória | *Memória* | **8 GB** ou mais (com 4 GB funciona mal) |
+| Virtualização | *CPU* → "Virtualização" | **Habilitado**. Se estiver desabilitado, ligue na BIOS (Intel VT-x / AMD SVM) |
+| Windows | *Configurações → Sistema → Sobre* | 10 ou 11, **64 bits** |
+| Disco | *Disco* | SSD de preferência (HD comum funciona, mais lento) |
+
+O Docker Desktop usa o **WSL 2** do Windows: o instalador oferece ativar — aceite e
+reinicie quando ele pedir.
+
+**Para o sistema voltar sozinho** (queda de luz, alguém desligou o PC):
+
+- **Login automático no Windows.** O Docker Desktop só sobe depois que alguém entra no
+  Windows. `Win+R` → `netplwiz` → desmarque *"Os usuários devem digitar um nome de usuário e
+  uma senha"*. (No Windows 11, se a opção não aparecer, desligue antes *Configurações →
+  Contas → Opções de entrada → "Para maior segurança, permitir apenas o Windows Hello..."*.)
+- **Nunca suspender.** *Configurações → Sistema → Energia* → "Suspender: **Nunca**" (a tela
+  pode apagar à vontade).
+- **Windows Update fora do expediente.** *Windows Update → Opções avançadas → Horário ativo*
+  cobrindo o horário da oficina — assim ele não reinicia no meio do atendimento.
+- Opcional: na BIOS, *Restore on AC power loss → Power On* faz o PC ligar sozinho quando a
+  luz volta.
+
+**O mesmo PC pode ser o do balcão:** abra `http://localhost:3333` no navegador (ou instale o
+app Hermes e informe `localhost:3333`). Pode desligar no fim do dia: ao ligar, o sistema volta
+e, se a última cópia de backup tiver mais de 24 h, faz uma nova na hora.
 
 ## 2. Configurar
 
@@ -187,6 +221,7 @@ COOKIE_SECURE=true    # o cookie de sessão só trafega por HTTPS
 
 | Sintoma | O que fazer |
 |---|---|
+| Depois que o PC servidor reiniciou, o sistema não abre | O Docker Desktop só sobe depois que alguém entra no Windows. Entre no Windows do servidor e espere 1–2 minutos (o ícone da baleia fica parado quando terminou). Para não depender disso: login automático, seção [1.1](#11-servidor-num-pc-da-própria-oficina-windows). |
 | App mostra "Não foi possível conectar ao servidor" | O servidor está ligado? `docker compose -f docker-compose.prod.yml ps`. O IP mudou? (fixe o IP no roteador). O firewall liberou a 3333? |
 | `app` reiniciando sem parar | `docker compose -f docker-compose.prod.yml logs app` — em geral é `SESSAO_SEGREDO` curto/de exemplo ou `POSTGRES_PASSWORD` diferente da usada na criação do banco. |
 | Celular ou computador perdido com o sistema aberto | O Dono, em **Configurações → Equipe**, clica em "Desconectar de todos os aparelhos" na pessoa. Cada um também vê e encerra os próprios aparelhos em **Configurações → Minha conta**. |
