@@ -1,10 +1,10 @@
 # Hermes — Sistema de Gestão para Oficina Mecânica
-### Documento de Planejamento e Arquitetura — v1.2
+### Documento de Planejamento e Arquitetura — v1.3
 
 > **Nome do sistema:** `Hermes` *(nome da oficina — Hermes, o deus grego da velocidade e do comércio: combina com a proposta de agilidade)*
 > **Cliente:** Oficina Hermes
 > **Objetivo:** Demonstrar um sistema completo, ágil e flexível que substitua o caderno (hoje é tudo na mão) e organize todo o fluxo da oficina, do orçamento ao lucro.
-> **Data:** 01/07/2026 · **Atualizado:** 03/07/2026 (v1.2 — status real do projeto + roadmap até 100% funcional)
+> **Data:** 01/07/2026 · **Atualizado:** 30/09/2026 (v1.3 — **versão 1.0 concluída**; arquitetura como construída na seção 7.4)
 
 ---
 
@@ -212,11 +212,28 @@ Esse fluxo é o que você vai **demonstrar** para a oficina: em menos de 1 minut
 ```
 Cada PC tem o app instalado; todos leem/gravam no mesmo banco. Ninguém trabalha "desatualizado".
 
+> **Como ficou na 1.0:** ver 7.4 — o banco pode ficar num PC servidor na própria oficina
+> (Docker) ou na nuvem; o app é uma janela para o servidor.
+
 ### 7.3 Backup e segurança
-- **Backup automático diário** do banco (a própria nuvem já faz).
+- **Backup automático diário** do banco (o próprio Hermes faz, com `pg_dump`, e o Dono baixa a cópia).
 - Senhas **criptografadas**.
 - Log de auditoria (quem fez o quê).
 - **LGPD:** dados de cliente ficam protegidos; só quem tem acesso vê CPF/telefone.
+
+### 7.4 Arquitetura como construída (v1.0)
+
+| Camada | Escolha final | Por quê (ver `docs/adr/`) |
+|---|---|---|
+| Tela | React 18 + Vite + Tailwind + TanStack Query | Servida pela própria API: um endereço para PC, tablet e celular (ADR 0004) |
+| App Windows | Electron como **janela** para o servidor | Atualizou o servidor, atualizou todo mundo (ADR 0004) |
+| Contrato | `packages/shared`: zod + DTOs + permissões + dinheiro | Servidor e tela não divergem (ADR 0001) |
+| API | Fastify 5 + Prisma 6 + PostgreSQL 16 | Regras no servidor, kardex e travas de linha (ADR 0003) |
+| Sessão | Cookie httpOnly, perfil lido do banco | Desativar funcionário vale na hora (ADR 0002) |
+| Relatórios | Gráfico SVG próprio + tabela | Sem biblioteca pesada; acessível e imprimível |
+| Impressão | Documento HTML + impressão do navegador ("Salvar como PDF") | Sem gerador de PDF no servidor |
+| Cache | Nenhum (Redis removido) | Volume de oficina não precisa (ADR 0005) |
+| Entrega | Imagem Docker única + `docker-compose.prod.yml` | Instalação e atualização com um comando |
 
 ---
 
@@ -285,93 +302,50 @@ Telas que vou detalhar na próxima fase: Dashboard, Cadastro de Cliente/Carro, N
 
 ---
 
-## 11. Status Atual e Roadmap até 100% Funcional
+## 11. Status Atual e Roadmap
 
-### 11.1 O que já está pronto ✅ (Fases 1 a 4 concluídas)
+### 11.1 Versão 1.0 — concluída (30/09/2026) ✅
 
-**Infraestrutura e back-end**
-- Monorepo (npm workspaces) com **API** e **app Desktop** separados.
-- **PostgreSQL 16 + Redis 7** em Docker; segredos em `.env`.
-- **API Node.js + Fastify + TypeScript**, **Prisma ORM** e cache Redis.
-- **Login + JWT** com os 3 perfis (Dono, Atendente, Mecânico) e permissões por ação.
-- **13 módulos** de negócio, com as regras RN-01 a RN-21 aplicadas no núcleo.
+Todas as fases de 1 a 6 e a maior parte da 7 foram entregues. O que entrou, em detalhe:
+[CHANGELOG.md](CHANGELOG.md). Em resumo:
 
-**App (telas funcionais, ligadas à API de verdade)**
-- 🏠 Dashboard · 👥 Clientes · 🚗 Carros · 🔧 Serviços · 📦 Estoque (com **leitor de código de barras**)
-- 📄 Orçamentos (montador + **aprovar → OS em 1 clique**, baixando estoque) · 🛠️ Ordens de Serviço (fluxo de status + **receber pagamento**) · 📅 Agenda
-- 💰 Livro-Caixa · 📉 Despesas · 🧾 Contas a Receber · 📊 Relatórios (com gráficos)
-- **Cenário de demonstração** completo e consistente (seed) + telas que **não quebram** em resoluções menores.
+- **Fluxo completo**: orçamento (completo ou **rápido**, sem cadastro) → aprovação com cadastro na
+  hora → OS com itens editáveis, apontamento e laudo → conclusão → **recebimento misto** (à vista +
+  fiado/parcelado) → entrega. Estorno e cancelamento com motivo, sem apagar histórico.
+- **Regras RN-01 a RN-21 no servidor**, inclusive garantia (RN-18), conflito de agenda (RN-19),
+  revisão vencida (RN-20), fiado bloqueado (RN-11.2) e teto de desconto com senha do Dono (RN-08).
+- **Estoque com kardex**, custo médio, peças fracionadas, leitor de código de barras, inventário.
+- **Financeiro**: caixa com fechamento por forma, despesas, contas a receber e a pagar,
+  compras, relatórios de lucro real, **comissão por mecânico**.
+- **Venda de balcão**, **WhatsApp** (orçamento, carro pronto, cobrança, retorno, lembrete),
+  impressão com logo, **Ajuda** (RN-21).
+- **Produção**: imagem Docker, app instalável para Windows, backup diário com download,
+  histórico de ações, recuperação de senha pela linha de comando.
+- **Qualidade**: 272 testes automatizados (a API contra PostgreSQL real), lint, CI.
 
-> Traduzindo: **o fluxo de negócio inteiro — do orçamento ao lucro — já funciona.** É a parte mais difícil, e ela está de pé.
-
-### 11.2 Onde estamos (avaliação honesta)
+### 11.2 Onde estamos
 
 | Régua | % |
 |---|---|
-| Protótipo funcional / demonstração | ~85% |
-| **Uso diário real na oficina (usabilidade)** | **~70%** *(Fase 5 concluída)* |
-| Produto comercial (vender a outras oficinas) | ~35% |
+| Uso diário real na oficina | **~95%** — falta só o uso de verdade apontar os ajustes finos |
+| Produto comercial (vender a outras oficinas) | **~75%** — falta nota fiscal e um fluxo de instalação assistida |
 
-O que ainda segura: o sistema **roda no navegador** (não é um programa instalável), a senha
-padrão `hermes123` só sai pelo banco, e **não há um único teste automatizado** — com regras de
-dinheiro e estoque, isso é risco real. É o conteúdo da Fase 6.
+### 11.3 Próximas versões
 
-O que segura a usabilidade **não é funcionalidade** — é o que aparece quando alguém usa **todo dia e comete erros**: corrigir um cadastro, imprimir um comprovante, ver o histórico do cliente e não perder dados se o PC falhar.
-
-### 11.3 Roadmap de conclusão
-
-**✅ Fase 1–4 — Base + fluxo completo** *(concluídas)*
-Cadastros, orçamento → OS, estoque com baixa automática, financeiro completo, agenda, login/perfis.
-
-**✅ Fase 5 — Usabilidade essencial** *(concluída — usabilidade de ~40% para ~70%)*
-- ✅ **Editar/excluir** registros: cliente, carro, serviço, peça e **orçamento** (bloqueado depois de virar OS).
-- ✅ **Ficha do cliente** e **histórico do carro por placa** (RN-16/17): carros, OS passadas e fiado em aberto num clique.
-- ✅ **Impressão / PDF** do Orçamento e da OS — o comprovante que a oficina entrega ao cliente.
-- ✅ **Backup automático** do banco (24h, roda também ao ligar o PC) + `POST /backup` para o Dono gerar na hora.
-- ✅ **Máscaras** (CPF/CNPJ, telefone, placa, dinheiro) e **avisos "toast"** no lugar dos pop-ups do navegador.
-
-**🎯 Fase 6 — Produção e administração** *(em andamento — vira um app "de verdade", instalável e autônomo → ~85%)*
-- **Empacotar em Electron** (programa instalável no Windows) + build de produção da API.
-- ✅ **Tela de Configurações** (`/configuracoes`): usuários, minha senha e situação do backup.
-  *Ainda falta: dados da oficina, logo no PDF, margem padrão, % de desconto que exige senha.*
-- ✅ **Gestão de usuários** pela interface (criar/editar, redefinir senha, ativar/inativar) — elimina a senha padrão `hermes123`.
-  Travas: o único Dono ativo não pode ser rebaixado nem inativado, e ninguém tira o próprio acesso.
-- ✅ **Compras e contas a pagar**: cadastro de **distribuidores**, registro da **compra** (vários itens de
-  uma vez, dando entrada no estoque e cadastrando peça nova na hora), visão de **quanto se deve a cada
-  distribuidor** e **acerto** (pagar uma compra ou quitar todo o saldo). Compra a prazo entra no estoque
-  mas só sai do caixa quando paga (regime de caixa, sem dupla contagem no lucro).
-- ✅ **Alertas ativos**: revisão vencida (RN-20), conflito de horário na agenda (RN-19),
-  bloqueio de fiado em atraso (RN-11.2), expiração automática de orçamento (RN-06).
-- ✅ **Log de auditoria** visível (quem fez o quê), em `/auditoria` — só o Dono.
-- ✅ **Dados da oficina + logo no PDF**, margem padrão, teto de desconto (RN-08) e prazo
-  de garantia (RN-18) configuráveis em Configurações.
-- ✅ **OS de garantia** (RN-18): sem cobrança, copiando a mão de obra, dentro do prazo.
-- ✅ **Testes automatizados** do núcleo financeiro — 66 casos contra Postgres de verdade.
-
-**Fase 7 — Diferenciais e fiscal** *(quando fizer sentido para o negócio)*
-- **Venda de balcão** avulsa. *(A OS de garantia, RN-18, foi concluída na Fase 6.)*
-- Envio de Orçamento/OS por **WhatsApp**.
-- **Comissão por mecânico** e produtividade.
-- **Nota fiscal** (NF-e / NFC-e).
-- Módulo de **Ajuda/Suporte** (RN-21).
-
-> Ao concluir a **Fase 5**, o sistema já aguenta o dia a dia da oficina (~70% de usabilidade). Com a **Fase 6**, vira um produto instalável e autônomo (~85%). A **Fase 7** são diferenciais competitivos.
+- **Nota fiscal** (NF-e para peças / NFS-e para serviço), via integrador homologado.
+- **Acesso remoto facilitado** (VPN embutida ou hospedagem gerenciada).
+- Relatório de **DRE simplificada** para o contador e exportação contábil.
+- Reavaliar após 30 dias de uso real: o que o balcão mais repete e o que ainda dá atrito.
 
 ---
 
 ## 12. Próximos Passos (a partir daqui)
 
-A **Fase 5 está concluída**: dá para corrigir cadastros, imprimir o comprovante, consultar a ficha
-do cliente e os dados têm cópia de segurança diária. O sistema aguenta o dia a dia da oficina.
-
-Seguimos para a **Fase 6 — Produção e administração**, nesta ordem de maior impacto:
-
-1. **Gestão de usuários pela tela** — hoje a senha padrão `hermes123` só muda no banco. É a maior
-   brecha aberta.
-2. **Empacotar em Electron** — vira um programa instalável, em vez de um site no navegador.
-3. **Tela de Configurações** — dados da oficina e logo no PDF impresso.
-4. **Alertas ativos** — revisão vencida (RN-20), conflito de agenda (RN-19), fiado em atraso (RN-11.2).
-5. **Testes automatizados** do núcleo financeiro (orçamento → OS → estoque → caixa).
+1. **Implantar na oficina** seguindo `docs/IMPLANTACAO.md` (servidor + app nos PCs).
+2. Primeira semana: o Dono configura oficina, logo e equipe; lança o **caderno de fiado** em
+   Contas a receber → "Lançar fiado"; faz o inventário inicial do estoque.
+3. Combinar a rotina de **baixar o backup** semanalmente para fora do servidor.
+4. Colher o retorno do balcão e do mecânico após 30 dias e priorizar a 1.1.
 
 ---
 

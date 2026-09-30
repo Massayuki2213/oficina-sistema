@@ -47,7 +47,7 @@ Peças e produtos com custo, venda e margem · entrada e saída com histórico d
 Livro-caixa alimentado automaticamente quando a OS é paga · despesas por categoria · **Contas a Receber** para parcelado e fiado · **Compras e Contas a Pagar** com saldo por distribuidor e acerto de dívida · relatórios com gráficos de faturamento, lucro, serviços mais vendidos e para onde o dinheiro está indo.
 
 **Administração**
-Três perfis de acesso (Dono, Atendente, Mecânico) com permissão por ação · gestão de usuários pela própria tela · **backup automático diário** do banco de dados, inclusive ao ligar o computador.
+Três perfis de acesso (Dono, Atendente, Mecânico) com permissão por ação · gestão de usuários pela própria tela · **histórico de quem fez o quê** · **backup automático diário** do banco de dados, inclusive ao ligar o computador.
 
 ---
 
@@ -81,34 +81,39 @@ Construído com tecnologia atual e de mercado — não é planilha com botão.
 
 | Camada | Tecnologia |
 |---|---|
-| Aplicação | React + TypeScript (empacotamento Electron para Windows em andamento) |
-| Servidor / regras de negócio | Node.js + Fastify + TypeScript |
-| Banco de dados | PostgreSQL |
-| Cache | Redis |
-| Acesso a dados | Prisma ORM |
-| Segurança | Login com JWT, senhas criptografadas, permissão por perfil |
+| Tela | React 18 + TypeScript + TanStack Query, servida pelo próprio servidor |
+| App para Windows | Electron (instalador): uma janela para o servidor da oficina |
+| Servidor / regras de negócio | Node.js + Fastify 5 + TypeScript |
+| Contrato servidor ⇄ tela | Pacote compartilhado com validação zod e tipos das respostas |
+| Banco de dados | PostgreSQL 16 via Prisma, com backup automático diário |
+| Segurança | Sessão em cookie httpOnly, senhas com bcrypt, permissão por perfil, histórico de ações |
+| Entrega | Imagem Docker única; CI com lint, tipos, 272 testes, build, varredura de segredos e `npm audit` |
 
-As regras de negócio (baixa de estoque, cálculo de lucro, geração de contas a receber) ficam no servidor, não na tela — o que garante que o número é o mesmo para todo mundo.
-
----
-
-## Status do produto
-
-O fluxo de negócio completo — **do orçamento ao lucro** — está funcionando: 17 módulos no servidor e 15 telas de trabalho ligadas a ele de verdade (não é maquete).
-
-**Em desenvolvimento (Fase 6 — produção):**
-instalador para Windows · dados da oficina e logo no PDF · alertas ativos (revisão vencida, conflito de agenda, fiado em atraso) · log de auditoria visível.
-
-**No roadmap (Fase 7 — diferenciais):**
-envio de orçamento e OS por WhatsApp · ordem de serviço em garantia · comissão por mecânico · nota fiscal (NF-e / NFC-e).
-
-Planejamento completo, regras de negócio e arquitetura: [PLANEJAMENTO.md](PLANEJAMENTO.md).
+As regras de negócio (baixa de estoque, cálculo de lucro, geração de contas a receber) ficam no
+servidor, não na tela — o número é o mesmo para todo mundo. Dinheiro é calculado em centavos,
+dos dois lados, para não sumir centavo no fechamento.
 
 ---
 
-## Ver funcionando
+## Status: versão 1.0
 
-O sistema tem um cenário de demonstração completo — clientes, veículos, orçamentos, ordens e movimento de caixa — para conhecer o fluxo inteiro sem precisar cadastrar nada.
+O sistema está completo para o dia a dia da oficina — orçamento (inclusive o rápido, sem
+cadastro), ordem de serviço, garantia, estoque com leitor de código de barras, venda de balcão,
+compras, caixa, fiado e parcelado, relatórios de lucro, comissão, agenda, WhatsApp, impressão,
+backup e histórico de ações. Veja o que entrou em [CHANGELOG.md](CHANGELOG.md).
+
+**No roadmap:** nota fiscal (NF-e / NFC-e) e acesso remoto facilitado.
+
+Planejamento, regras de negócio e arquitetura: [PLANEJAMENTO.md](PLANEJAMENTO.md) ·
+decisões técnicas: [docs/adr](docs/adr/README.md).
+
+---
+
+## Instalar e ver funcionando
+
+- **Na oficina** (um computador servidor + os PCs do balcão): [docs/IMPLANTACAO.md](docs/IMPLANTACAO.md).
+- **Para desenvolver ou demonstrar** (com um cenário completo de clientes, OS e caixa):
+  [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md).
 
 **Quer uma demonstração na sua oficina?** Entre em contato.
 
