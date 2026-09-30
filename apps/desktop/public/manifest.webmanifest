@@ -1,0 +1,10 @@
+{
+  "name": "Hermes — Gestão de Oficina",
+  "short_name": "Hermes",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#EEF2F5",
+  "theme_color": "#0F3D57",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
