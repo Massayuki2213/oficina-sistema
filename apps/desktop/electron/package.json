@@ -1,0 +1,45 @@
+{
+  "name": "hermes-janela",
+  "productName": "Hermes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hermes — app de desktop: a janela da oficina para o servidor do Hermes.",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "br.com.hermes.oficina",
+    "productName": "Hermes",
+    "copyright": "Hermes",
+    "directories": {
+      "output": "../release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "configurar.html",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hermes"
+    },
+    "electronDist": "node_modules/electron/dist"
+  },
+  "author": "Hermes"
+}

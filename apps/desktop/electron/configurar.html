@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'" />
+    <title>Hermes — conectar ao servidor</title>
+    <style>
+      :root {
+        --petroleo: #0f3d57;
+        --laranja: #f26522;
+        --fundo: #eef2f5;
+        --linha: #dce4ea;
+        --grafite: #1e2a33;
+        --vermelho: #e24c4b;
+        --verde: #2fb37a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: var(--fundo);
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        color: var(--grafite);
+      }
+      main {
+        width: min(30rem, calc(100vw - 32px));
+        background: #fff;
+        border: 1px solid var(--linha);
+        border-radius: 18px;
+        padding: 28px;
+        box-shadow: 0 10px 30px rgba(15, 61, 87, 0.08);
+      }
+      h1 { margin: 0 0 4px; color: var(--petroleo); font-size: 22px; }
+      p { margin: 0 0 18px; color: #5b6670; font-size: 14px; line-height: 1.45; }
+      label { display: block; font-size: 12px; font-weight: 700; color: #5b6670; margin-bottom: 6px; }
+      input {
+        width: 100%;
+        padding: 11px 12px;
+        font-size: 16px;
+        border: 1.6px solid var(--linha);
+        border-radius: 10px;
+        outline: none;
+      }
+      input:focus { border-color: var(--laranja); }
+      button {
+        margin-top: 16px;
+        width: 100%;
+        padding: 12px;
+        font-size: 15px;
+        font-weight: 700;
+        color: #fff;
+        background: var(--laranja);
+        border: 0;
+        border-radius: 12px;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.6; cursor: wait; }
+      .msg { margin-top: 14px; font-size: 13px; font-weight: 600; min-height: 1.2em; }
+      .erro { color: var(--vermelho); }
+      .ok { color: var(--verde); }
+      .dica { margin-top: 18px; font-size: 12px; color: #7b8791; line-height: 1.5; }
+      code { background: var(--fundo); padding: 1px 5px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Conectar ao servidor</h1>
+      <p>Informe o endereço do computador onde o Hermes está instalado na oficina.</p>
+      <form id="form">
+        <label for="endereco">Endereço do servidor</label>
+        <input id="endereco" placeholder="192.168.0.10:3333" autocomplete="off" autofocus />
+        <button id="botao" type="submit">Conectar</button>
+        <div id="msg" class="msg" role="status"></div>
+      </form>
+      <div class="dica">
+        No próprio computador do servidor, use <code>localhost:3333</code>. Nos outros PCs, use o IP dele na rede
+        (quem instalou o servidor sabe — em geral algo como <code>192.168.0.10:3333</code>).
+      </div>
+    </main>
+    <script>
+      const form = document.getElementById('form');
+      const campo = document.getElementById('endereco');
+      const botao = document.getElementById('botao');
+      const msg = document.getElementById('msg');
+
+      function mostrar(texto, tipo) {
+        msg.textContent = texto;
+        msg.className = 'msg ' + (tipo || '');
+      }
+
+      const motivo = new URLSearchParams(location.search).get('motivo');
+      if (motivo) mostrar(motivo, 'erro');
+
+      window.hermesDesktop.atual().then((atual) => {
+        if (atual) campo.value = atual.replace(/^https?:\/\//, '');
+      });
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        botao.disabled = true;
+        mostrar('Testando a conexão...');
+        const r = await window.hermesDesktop.conectar(campo.value);
+        botao.disabled = false;
+        if (!r.ok) mostrar(r.erro || 'Não foi possível conectar.', 'erro');
+        else mostrar('Conectado!', 'ok');
+      });
+    </script>
+  </body>
+</html>
