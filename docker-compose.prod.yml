@@ -64,7 +64,12 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-false}
       BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
       BACKUP_RETENCAO_DIAS: ${BACKUP_RETENCAO_DIAS:-14}
+      # Segunda cópia no HD externo (montado abaixo). BACKUP_DIR_EXTERNO= vazio
+      # no .env desliga a cópia e o aviso de "HD desconectado".
+      BACKUP_DIR_EXTERNO: ${BACKUP_DIR_EXTERNO-/app/backups-externo}
+      BACKUP_RETENCAO_DIAS_EXTERNO: ${BACKUP_RETENCAO_DIAS_EXTERNO:-60}
       # Opcional: cifra as cópias (docs/IMPLANTACAO.md → "Backup cifrado").
+      # Obrigatório se o HD externo sair da oficina (guardado em casa, por exemplo).
       BACKUP_SENHA: ${BACKUP_SENHA:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
@@ -75,6 +80,15 @@ services:
       # Cópias de backup numa pasta do mini PC (SSD): os scripts de ops/ e o
       # rclone leem daqui. Dono da pasta: uid 1000 (o usuário da imagem).
       - ${HERMES_BACKUPS:-/srv/hermes/backups}:/app/backups
+      # Raiz do HD externo (fstab por UUID, com nofail). rslave: se o HD for
+      # montado depois que o sistema subiu, ele aparece aqui dentro sem reiniciar.
+      # Sem o HD, a pasta fica vazia (sem o arquivo-marca) e o sistema avisa o Dono.
+      - type: bind
+        source: ${HERMES_HD_EXTERNO:-/mnt/hermes-backup}
+        target: /app/backups-externo
+        bind:
+          propagation: rslave
+          create_host_path: true
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3333/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s

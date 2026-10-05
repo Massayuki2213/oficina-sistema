@@ -668,6 +668,8 @@ export interface AlertasDTO {
   orcamentosVencendo: OrcamentoVencendoDTO[] | null;
   fiadoEmAtraso: FiadoAtrasoDTO[] | null;
   comprasVencendo: CompraVencendoDTO[] | null;
+  /** Problema com o backup — só para quem cuida dele (Dono); null = tudo certo. */
+  backup: AlertaBackupDTO | null;
   total: number;
 }
 
@@ -794,4 +796,25 @@ export interface StatusBackupDTO {
   atrasado: boolean;
   total: number;
   arquivos: ArquivoBackupDTO[];
+  /** Segunda cópia no HD externo (null = servidor sem HD configurado). */
+  hdExterno: {
+    /** O HD está conectado (tem o arquivo-marca). */
+    montado: boolean;
+    ultimo: ArquivoBackupDTO | null;
+    total: number;
+    retencaoDias: number;
+    livreBytes: number | null;
+    /** Última falha ao gravar no HD, se a cópia seguinte ainda não deu certo. */
+    erro: string | null;
+  } | null;
+}
+
+/** Alerta do painel do Dono: só existe quando há problema com o backup. */
+export interface AlertaBackupDTO {
+  /** A cópia mais nova tem mais de 24 h (ou não há nenhuma). */
+  atrasado: boolean;
+  ultimoEm: ISODate | null;
+  /** Há HD externo configurado, mas ele não está conectado. */
+  hdAusente: boolean;
+  hdErro: string | null;
 }

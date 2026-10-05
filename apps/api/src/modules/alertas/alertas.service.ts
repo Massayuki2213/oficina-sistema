@@ -14,6 +14,7 @@ import { num, somar } from '../../lib/dinheiro.js';
 import { adicionarDias, diasEntre, fimDoDia, inicioDoDia } from '../../lib/datas.js';
 import { saldoParcela } from '../../dominio/fiado.js';
 import { incluirOSResumo, paraOSResumo } from '../ordens/ordens.mapper.js';
+import { alertaDeBackup } from '../backup/backup.service.js';
 
 // ============================================================
 // Alertas ativos — o que a oficina precisa VER sem ir procurar:
@@ -200,13 +201,15 @@ export async function comprasVencendo(dias = DIAS_AVISO_COMPRA): Promise<CompraV
 /** Tudo de uma vez — é o que o painel do dia consome. */
 export async function todos(ator: UsuarioSessao): Promise<AlertasDTO> {
   const p = ator.permissoes;
-  const [estoque, atrasadas, revisao, orcamentos, fiado, compras] = await Promise.all([
+  const [estoque, atrasadas, revisao, orcamentos, fiado, compras, backup] = await Promise.all([
     estoqueBaixo(),
     osAtrasadas(ator),
     p.atender ? revisaoVencida() : null,
     p.atender ? orcamentosVencendo() : null,
     p.receberPagamentos ? fiadoEmAtraso() : null,
     p.verFinanceiro ? comprasVencendo() : null,
+    // Backup atrasado ou HD externo desconectado: é o Dono quem resolve.
+    p.gerenciarBackup ? alertaDeBackup() : null,
   ]);
 
   return {
@@ -216,12 +219,14 @@ export async function todos(ator: UsuarioSessao): Promise<AlertasDTO> {
     orcamentosVencendo: orcamentos,
     fiadoEmAtraso: fiado,
     comprasVencendo: compras,
+    backup,
     total:
       estoque.length +
       atrasadas.length +
       (revisao?.length ?? 0) +
       (orcamentos?.length ?? 0) +
       (fiado?.length ?? 0) +
-      (compras?.length ?? 0),
+      (compras?.length ?? 0) +
+      (backup ? 1 : 0),
   };
 }

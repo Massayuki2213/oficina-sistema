@@ -1,17 +1,26 @@
 import { spawn } from 'node:child_process';
-import { createReadStream, createWriteStream } from 'node:fs';
-import { appendFile, mkdir, readdir, rename, stat, unlink } from 'node:fs/promises';
+import { createReadStream, createWriteStream, existsSync } from 'node:fs';
+import { appendFile, copyFile, mkdir, readdir, rename, stat, statfs, unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { resolve, join } from 'node:path';
 import { env } from '../../lib/env.js';
-import type { StatusBackupDTO } from '@hermes/shared';
+import type { AlertaBackupDTO, StatusBackupDTO } from '@hermes/shared';
 import { AppError, naoEncontrado } from '../../lib/errors.js';
 import { novaCifra } from '../../lib/cofre.js';
 
 // ============================================================
-// Backup do banco (Fase 5) — o seguro contra "o PC da oficina morreu".
-// Gera um .sql com pg_dump, guarda em BACKUP_DIR e apaga os antigos.
+// Backup do banco — o seguro contra "o PC da oficina morreu".
+// Gera um .sql com pg_dump, guarda em BACKUP_DIR (SSD do mini PC) e,
+// se houver, uma segunda cópia no HD externo; apaga os antigos de cada
+// lugar pela retenção de cada um (14 dias no SSD, 60 no HD).
 // ============================================================
+
+/**
+ * Arquivo que o instalador grava na raiz do HD externo. Sem ele, a pasta do
+ * ponto de montagem é só uma pasta vazia no SSD (HD desconectado) — e copiar
+ * para lá daria a impressão de backup externo sem haver nenhum.
+ */
+export const MARCA_HD = '.hermes-hd-externo';
 
 const PREFIXO = 'hermes-';
 const SUFIXO = '.sql';
@@ -130,19 +139,30 @@ async function gerarDump(destino: string) {
   return 'pg_dump';
 }
 
-/** Apaga backups mais velhos que a retenção, preservando sempre os 3 últimos. */
-async function limparAntigos() {
-  const pasta = pastaBackup();
-  const arquivos = await listarBackups();
-  const limite = Date.now() - env.BACKUP_RETENCAO_DIAS * 24 * 60 * 60 * 1000;
+/** Cópias numa pasta (SSD ou HD), da mais nova para a mais antiga. Pasta que não existe = nenhuma. */
+export async function listarPasta(pasta: string): Promise<ArquivoBackup[]> {
+  const nomes = (await readdir(pasta).catch(() => [] as string[])).filter(ehBackup);
+  const arquivos = await Promise.all(
+    nomes.map(async (arquivo) => {
+      const info = await stat(join(pasta, arquivo));
+      return { arquivo, criadoEm: info.mtime.toISOString(), bytes: info.size };
+    }),
+  );
+  return arquivos.sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+}
+
+/** Apaga as cópias mais velhas que a retenção, preservando sempre as 3 últimas. */
+export async function podarPasta(pasta: string, retencaoDias: number): Promise<number> {
+  const arquivos = await listarPasta(pasta);
+  const limite = Date.now() - retencaoDias * UM_DIA;
 
   const apagaveis = arquivos.slice(MINIMO_MANTIDO).filter((a) => new Date(a.criadoEm).getTime() < limite);
   for (const alvo of apagaveis) {
     await unlink(join(pasta, alvo.arquivo)).catch(() => {});
   }
 
-  // Restos de dumps interrompidos (PC desligado no meio) não podem se acumular.
-  const restos = (await readdir(pasta)).filter((n) => n.endsWith(PARCIAL));
+  // Restos de cópias interrompidas (PC desligado no meio) não podem se acumular.
+  const restos = (await readdir(pasta).catch(() => [] as string[])).filter((n) => n.endsWith(PARCIAL));
   for (const resto of restos) {
     const info = await stat(join(pasta, resto)).catch(() => null);
     if (info && Date.now() - info.mtimeMs > UMA_HORA) {
@@ -153,19 +173,61 @@ async function limparAntigos() {
   return apagaveis.length;
 }
 
-/** Backups existentes, do mais novo para o mais antigo. */
+/** Backups do SSD, do mais novo para o mais antigo. */
 export async function listarBackups(): Promise<ArquivoBackup[]> {
-  const pasta = pastaBackup();
-  await mkdir(pasta, { recursive: true });
+  await mkdir(pastaBackup(), { recursive: true });
+  return listarPasta(pastaBackup());
+}
 
-  const nomes = (await readdir(pasta)).filter(ehBackup);
-  const arquivos = await Promise.all(
-    nomes.map(async (arquivo) => {
-      const info = await stat(join(pasta, arquivo));
-      return { arquivo, criadoEm: info.mtime.toISOString(), bytes: info.size };
-    }),
-  );
-  return arquivos.sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+// ---- HD externo -------------------------------------------------------------
+
+/** O HD está montado de verdade (tem a marca), e não só a pasta vazia do ponto de montagem. */
+export const hdMontado = (pastaHd: string) => existsSync(join(pastaHd, MARCA_HD));
+
+/**
+ * Leva uma cópia pronta do SSD para o HD: grava como .parcial e só então
+ * renomeia (HD arrancado no meio não deixa arquivo pela metade com nome de
+ * backup). Já existindo lá, não copia de novo. Depois, aplica a retenção do HD.
+ */
+export async function enviarAoHd(origem: string, nome: string, pastaHd: string, retencaoDias: number): Promise<'ok' | 'ausente'> {
+  if (!hdMontado(pastaHd)) return 'ausente';
+  const destino = join(pastaHd, nome);
+  if (!existsSync(destino)) {
+    const parcial = `${destino}${PARCIAL}`;
+    await copyFile(origem, parcial);
+    await rename(parcial, destino);
+  }
+  await podarPasta(pastaHd, retencaoDias);
+  return 'ok';
+}
+
+/** Última falha ao gravar no HD (disco cheio, HD com defeito), até a próxima tentativa. */
+let falhaNoHd: string | null = null;
+
+/** O erro de disco dito para o Dono; o código fica entre parênteses para o suporte. */
+const MOTIVOS_HD: Record<string, string> = {
+  ENOSPC: 'o HD está cheio',
+  EACCES: 'sem permissão para gravar no HD',
+  EPERM: 'sem permissão para gravar no HD',
+  EROFS: 'o HD ficou só para leitura (pode estar com defeito)',
+  EIO: 'erro de gravação (o HD pode estar com defeito ou foi desconectado)',
+};
+const motivoNoHd = (err: NodeJS.ErrnoException) =>
+  err.code && MOTIVOS_HD[err.code] ? `${MOTIVOS_HD[err.code]} (${err.code})` : err.message;
+
+/** A cópia no HD configurado em BACKUP_DIR_EXTERNO. Nunca lança: o backup do SSD já está salvo. */
+async function copiaNoHd(origem: string, nome: string): Promise<'ok' | 'ausente' | 'falhou' | 'desligado'> {
+  const pastaHd = env.BACKUP_DIR_EXTERNO;
+  if (!pastaHd) return 'desligado';
+  try {
+    const r = await enviarAoHd(origem, nome, pastaHd, env.BACKUP_RETENCAO_DIAS_EXTERNO);
+    // Gravou, ou o HD saiu: a falha antiga não vale mais (o aviso passa a ser "desconectado").
+    falhaNoHd = null;
+    return r;
+  } catch (err) {
+    falhaNoHd = motivoNoHd(err as NodeJS.ErrnoException);
+    return 'falhou';
+  }
 }
 
 let rodando = false;
@@ -188,9 +250,10 @@ export async function gerarBackup() {
     await rename(parcial, destino);
 
     const info = await stat(destino);
-    const removidos = await limparAntigos();
+    const removidos = await podarPasta(pasta, env.BACKUP_RETENCAO_DIAS);
+    const hdExterno = await copiaNoHd(destino, arquivo);
 
-    return { arquivo, criadoEm: info.mtime.toISOString(), bytes: info.size, via, removidos };
+    return { arquivo, criadoEm: info.mtime.toISOString(), bytes: info.size, via, removidos, hdExterno };
   } finally {
     rodando = false;
   }
@@ -205,11 +268,36 @@ export async function abrirArquivo(nome: string) {
   return { stream: createReadStream(caminho), bytes: info.size };
 }
 
+/** Espaço livre numa pasta, em bytes (null se não der para medir). */
+async function espacoLivre(pasta: string): Promise<number | null> {
+  try {
+    const s = await statfs(pasta);
+    return s.bavail * s.bsize;
+  } catch {
+    return null;
+  }
+}
+
 /** Situação do backup, para a tela mostrar ("último backup: hoje 09:12"). */
 export async function statusBackup(): Promise<StatusBackupDTO> {
   const arquivos = await listarBackups();
   const ultimo = arquivos[0] ?? null;
   const atrasado = !ultimo || Date.now() - new Date(ultimo.criadoEm).getTime() > UM_DIA;
+
+  const pastaHd = env.BACKUP_DIR_EXTERNO;
+  let hdExterno: StatusBackupDTO['hdExterno'] = null;
+  if (pastaHd) {
+    const montado = hdMontado(pastaHd);
+    const noHd = montado ? await listarPasta(pastaHd) : [];
+    hdExterno = {
+      montado,
+      ultimo: noHd[0] ?? null,
+      total: noHd.length,
+      retencaoDias: env.BACKUP_RETENCAO_DIAS_EXTERNO,
+      livreBytes: montado ? await espacoLivre(pastaHd) : null,
+      erro: falhaNoHd,
+    };
+  }
 
   return {
     ativo: env.BACKUP_ENABLED,
@@ -220,7 +308,23 @@ export async function statusBackup(): Promise<StatusBackupDTO> {
     atrasado,
     total: arquivos.length,
     arquivos: arquivos.slice(0, 10),
+    hdExterno,
   };
+}
+
+/**
+ * O que o painel do Dono precisa saber: só aparece quando há problema —
+ * backup com mais de 24 h, HD externo desconectado ou falhando. null = tudo certo.
+ */
+export async function alertaDeBackup(): Promise<AlertaBackupDTO | null> {
+  if (!env.BACKUP_ENABLED) return null;
+  const [ultimo] = await listarBackups();
+  const atrasado = !ultimo || Date.now() - new Date(ultimo.criadoEm).getTime() > UM_DIA;
+  const pastaHd = env.BACKUP_DIR_EXTERNO;
+  const hdAusente = !!pastaHd && !hdMontado(pastaHd);
+  const hdErro = pastaHd ? falhaNoHd : null;
+  if (!atrasado && !hdAusente && !hdErro) return null;
+  return { atrasado, ultimoEm: ultimo?.criadoEm ?? null, hdAusente, hdErro };
 }
 
 // ---- Agendador ------------------------------------------------------------
@@ -230,13 +334,29 @@ export async function statusBackup(): Promise<StatusBackupDTO> {
 
 const INTERVALO_CHECAGEM = UMA_HORA;
 
+/** Último estado do HD visto pelo agendador — o log só fala quando muda. */
+let estadoHd: string | null = null;
+
+function registrarHd(estado: string, log: (msg: string) => void) {
+  if (estado === estadoHd) return;
+  estadoHd = estado;
+  if (estado === 'ausente') log('⚠️  HD externo não está montado (sem o arquivo-marca): as cópias estão só no SSD.');
+  if (estado === 'falhou') log(`⚠️  Não consegui gravar no HD externo: ${falhaNoHd}`);
+  if (estado === 'ok') log('💽 HD externo montado: cópias em dia.');
+}
+
 async function backupSeAtrasado(log: (msg: string) => void) {
   try {
     const [ultimo] = await listarBackups();
-    if (ultimo && Date.now() - new Date(ultimo.criadoEm).getTime() < UM_DIA) return;
+    if (ultimo && Date.now() - new Date(ultimo.criadoEm).getTime() < UM_DIA) {
+      // Cópia do dia já existe. O HD pode ter voltado depois dela: leva a última para lá.
+      registrarHd(await copiaNoHd(join(pastaBackup(), ultimo.arquivo), ultimo.arquivo), log);
+      return;
+    }
 
     const feito = await gerarBackup();
     log(`💾 Backup do banco gerado: ${feito.arquivo} (${Math.round(feito.bytes / 1024)} KB, via ${feito.via})`);
+    registrarHd(feito.hdExterno, log);
   } catch (err) {
     // Backup é rede de segurança: se falhar, avisa alto e claro, mas nunca
     // derruba a API — a oficina continua atendendo.

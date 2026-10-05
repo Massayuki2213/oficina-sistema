@@ -70,6 +70,14 @@ const schema = z
     BACKUP_DIR: z.string().default('./backups'),
     BACKUP_RETENCAO_DIAS: z.coerce.number().int().positive().default(14),
     /**
+     * Segunda cópia num HD externo (pasta, dentro do container, onde o HD está
+     * montado). Só grava se o HD tiver o arquivo-marca `.hermes-hd-externo`:
+     * HD desconectado = pasta vazia no SSD, e copiar ali enganaria todo mundo.
+     * Vazio = sem HD externo.
+     */
+    BACKUP_DIR_EXTERNO: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+    BACKUP_RETENCAO_DIAS_EXTERNO: z.coerce.number().int().positive().default(60),
+    /**
      * Senha que cifra as cópias (AES-256-GCM). Opcional — mas PERDEU A SENHA,
      * PERDEU AS CÓPIAS: guarde-a fora do servidor. Vazio = cópias em SQL puro.
      */
