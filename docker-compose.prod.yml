@@ -1,22 +1,30 @@
 # ==========================================================
-# Hermes — instalação na oficina: banco + sistema.
+# Hermes — produção no mini PC da oficina (Linux): banco + sistema.
 #
-#   1. Crie um arquivo .env ao lado deste com (no mínimo):
-#        POSTGRES_PASSWORD=<uma senha forte>
-#        SESSAO_SEGREDO=<openssl rand -hex 32>
-#   2. docker compose -f docker-compose.prod.yml up -d --build
-#   3. Abra http://<ip-deste-computador>:3333 em qualquer PC ou tablet
-#      da rede. O primeiro acesso cria o usuário Dono.
+# Não se edita à mão: o ops/instalar.sh gera o .env ao lado deste arquivo
+# (segredos aleatórios) e sobe tudo; o ops/atualizar.sh troca a versão.
+# Passo a passo: docs/IMPLANTACAO.md.
 #
-# Passo a passo completo (backup fora do PC, atualização, HTTPS):
-# docs/IMPLANTACAO.md
+# Acesso: http://<ip-do-mini-pc> (porta 80) em qualquer navegador da rede.
+# O primeiro acesso cria o usuário Dono.
 # ==========================================================
 name: hermes
+
+# Sem limite, o log do Docker cresce para sempre no SSD: no máximo 5 × 10 MB por serviço.
+x-logs: &logs
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
 
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Relógio do banco no fuso da oficina (o psql mostra a hora local). Os horários
+    # continuam gravados em UTC: quem grava é a aplicação (tests/fuso.test.ts).
+    command: ["postgres", "-c", "timezone=${TZ:-America/Sao_Paulo}", "-c", "log_timezone=${TZ:-America/Sao_Paulo}"]
     environment:
       POSTGRES_USER: hermes
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
@@ -30,10 +38,15 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 20s
+    # Queda de luz com nobreak: dá tempo ao banco de fechar direito.
+    stop_grace_period: 1m
+    <<: *logs
 
   app:
-    build: .
-    image: hermes:1.0.0
+    # Imagem publicada pelo CI a cada versão (ghcr.io, pública). Atualizar ou
+    # voltar atrás = trocar HERMES_VERSAO no .env (o ops/atualizar.sh faz isso).
+    image: "${HERMES_IMAGEM:-ghcr.io/massayuki2213/oficina-sistema}:${HERMES_VERSAO:?Defina HERMES_VERSAO no .env, por exemplo v1.0.0}"
     restart: unless-stopped
     depends_on:
       db:
@@ -55,10 +68,20 @@ services:
       BACKUP_SENHA: ${BACKUP_SENHA:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
-      - "${HERMES_PORT:-3333}:3333"
+      # A porta 80 é só do lado do mini PC (endereço http://<ip>); dentro do
+      # container a API segue na 3333.
+      - "${HERMES_PORT:-80}:3333"
     volumes:
-      - backups:/app/backups
+      # Cópias de backup numa pasta do mini PC (SSD): os scripts de ops/ e o
+      # rclone leem daqui. Dono da pasta: uid 1000 (o usuário da imagem).
+      - ${HERMES_BACKUPS:-/srv/hermes/backups}:/app/backups
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3333/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    <<: *logs
 
 volumes:
   dados:
-  backups:
