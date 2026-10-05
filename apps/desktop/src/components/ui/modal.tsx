@@ -38,6 +38,9 @@ export function Modal({
   semFocoInicial?: boolean;
 }) {
   const largura = size === 'xl' ? 'max-w-4xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-md';
+  // Janela grande (OS, orçamento) no celular ocupa a tela inteira: no meio da
+  // tela sobra pouco espaço e a borda cortava. A pequena (confirmação) segue no meio.
+  const telaCheiaNoCelular = size !== 'md';
   const avisos = useAvisos();
   const caixa = useRef<HTMLDivElement>(null);
   const alterado = useRef(false);
@@ -108,21 +111,30 @@ export function Modal({
   const corpo = (
     <>
       <div className="p-5 sm:p-6 space-y-3.5">{children}</div>
-      {footer && <div className="flex flex-wrap justify-end gap-2.5 px-5 sm:px-6 py-4 border-t border-linha">{footer}</div>}
+      {/* Rodapé grudado embaixo: o botão de salvar (ou "Concluir serviço") fica
+          à vista mesmo com o conteúdo rolando, no celular principalmente. */}
+      {footer && (
+        <div className="sticky bottom-0 bg-white flex flex-wrap justify-end gap-2.5 px-5 sm:px-6 py-4 border-t border-linha">{footer}</div>
+      )}
     </>
   );
 
   // Portal no <body>: uma janela aberta de dentro de outra (cadastrar o cliente
   // sem sair da OS) fica por cima, e o ESC fecha só a de cima.
   return createPortal(
-    <div className="nao-imprimir fixed inset-0 bg-petroleo/50 grid place-items-center p-3 sm:p-5 z-50" onMouseDown={() => void fecharComCuidado()}>
+    <div
+      className={`nao-imprimir fixed inset-0 bg-petroleo/50 grid place-items-center z-50 ${telaCheiaNoCelular ? 'p-0 sm:p-5' : 'p-3 sm:p-5'}`}
+      onMouseDown={() => void fecharComCuidado()}
+    >
       <div
         ref={caixa}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={tituloId}
-        className={`bg-white rounded-2xl w-full ${largura} max-h-[92vh] overflow-y-auto shadow-2xl outline-none`}
+        className={`bg-white w-full ${largura} overflow-y-auto shadow-2xl outline-none ${
+          telaCheiaNoCelular ? 'h-[100dvh] rounded-none sm:h-auto sm:max-h-[92vh] sm:rounded-2xl' : 'max-h-[92vh] rounded-2xl'
+        }`}
         onMouseDown={(e) => e.stopPropagation()}
         // Qualquer digitação marca a janela como suja, sem cada formulário
         // ter que avisar — um `onInput` que sobe é mais confiável que 20 flags.

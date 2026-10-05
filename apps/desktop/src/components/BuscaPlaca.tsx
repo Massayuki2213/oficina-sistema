@@ -82,7 +82,9 @@ export function BuscaPlaca() {
           e.preventDefault();
           void buscar();
         }}
-        className="flex items-center gap-2 bg-fundo border border-linha rounded-xl px-3 py-2 w-full max-w-[19rem] focus-within:border-laranja focus-within:bg-white transition"
+        // min-w-0: sem ele o campo não encolhe abaixo da largura natural do <input>,
+        // e no celular (~380px) a barra do topo estoura e empurra o "Sair" para fora.
+        className="flex items-center gap-2 bg-fundo border border-linha rounded-xl px-3 py-2 w-full min-w-0 max-w-[19rem] focus-within:border-laranja focus-within:bg-white transition"
       >
         <Search size={16} className="text-grafite/40 shrink-0" />
         <input

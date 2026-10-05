@@ -115,7 +115,9 @@ export default function Painel() {
         )}
       </div>
 
-      <div className="grid lg:grid-cols-[1.4fr_1fr] gap-5 items-start">
+      {/* grid-cols-1 = minmax(0, 1fr): sem ele, no celular a coluna cresce até a
+          linha mais larga (placa + cliente + situação) e os cartões passam da tela. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5 items-start">
         <div className="space-y-5">
           {usuario.perfil === 'MECANICO' && <MinhasOS ordens={minhas.data?.itens ?? []} carregando={minhas.isPending} meuId={usuario.id} />}
           {alertas.error ? (

@@ -65,11 +65,23 @@ export function CampoBusca({
   );
 }
 
-export function Painel({ children, className = '' }: { children: ReactNode; className?: string }) {
+export function Painel({
+  children,
+  className = '',
+  cabeNoCelular = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  /**
+   * A tabela já esconde colunas no celular e cabe na tela: sem a largura mínima
+   * de 640px (que faria rolar para o lado e esconder a última coluna visível).
+   */
+  cabeNoCelular?: boolean;
+}) {
   // O wrapper interno rola na horizontal quando a tabela não cabe, em vez de cortar.
   return (
     <div className={`bg-white rounded-2xl border border-linha shadow-sm overflow-hidden ${className}`}>
-      <div className="overflow-x-auto [&>table]:min-w-[640px]">{children}</div>
+      <div className={`overflow-x-auto ${cabeNoCelular ? 'md:[&>table]:min-w-[640px]' : '[&>table]:min-w-[640px]'}`}>{children}</div>
     </div>
   );
 }

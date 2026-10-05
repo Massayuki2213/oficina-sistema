@@ -11,6 +11,9 @@ import { Badge, BtnPrimary, CampoBusca, EstadoTabela, PageHeader, Paginacao, Pai
 import { DetalheOS } from './DetalheOS';
 import { NovaOS } from './NovaOS';
 
+/** Coluna que só aparece da largura de tablet para cima. */
+const soNoComputador = 'hidden md:table-cell';
+
 type Aba = 'oficina' | 'prontas' | 'entregues' | 'canceladas' | 'todas';
 
 const ABAS: { id: Aba; rotulo: string; filtro: { abertas?: boolean; status?: StatusOS } }[] = [
@@ -57,6 +60,23 @@ export default function OrdensPage() {
   const souMecanico = usuario?.perfil === 'MECANICO';
   const mostraValor = pode('atender');
 
+  /** Quem está com a OS — ou, para o mecânico, o botão de pegar uma OS sem ninguém. */
+  const mecanicoDa = (o: OSResumoDTO) =>
+    o.mecanico ? (
+      o.mecanico.nome
+    ) : souMecanico && o.status !== 'ENTREGUE' && o.status !== 'CANCELADA' ? (
+      <button
+        type="button"
+        disabled={assumir.isPending}
+        onClick={() => assumir.mutate(o.id)}
+        className="inline-flex items-center gap-1 text-sm font-bold text-laranja hover:underline"
+      >
+        <UserCheck size={14} /> Assumir
+      </button>
+    ) : (
+      <span className="text-grafite/40">—</span>
+    );
+
   return (
     <div>
       <PageHeader
@@ -72,7 +92,9 @@ export default function OrdensPage() {
       </PageHeader>
 
       <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <div className="flex items-center gap-1 bg-white border border-linha rounded-xl p-1 overflow-x-auto" role="tablist">
+        {/* No celular as abas quebram em duas linhas: rolando para o lado, a última
+            ("Canceladas") ficava cortada sem ninguém saber que havia mais. */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-1 bg-white border border-linha rounded-xl p-1 sm:overflow-x-auto" role="tablist">
           {ABAS.map((a) => (
             <button
               key={a.id}
@@ -99,17 +121,19 @@ export default function OrdensPage() {
         )}
       </div>
 
-      <Painel>
+      <Painel cabeNoCelular>
         <table className="w-full">
           <thead>
             <tr className="border-b border-linha">
               <th className={thCls}>Nº</th>
               <th className={thCls}>Cliente e veículo</th>
               <th className={thCls}>Situação</th>
-              <th className={thCls}>Mecânico</th>
-              <th className={thCls}>Entrada</th>
-              <th className={thCls}>Previsão</th>
-              {mostraValor && <th className={`${thCls} text-right`}>Total</th>}
+              {/* No celular estas colunas somem: o mecânico (e o "Assumir") vai para
+                  baixo da situação, e o resto está na própria OS. */}
+              <th className={`${thCls} ${soNoComputador}`}>Mecânico</th>
+              <th className={`${thCls} ${soNoComputador}`}>Entrada</th>
+              <th className={`${thCls} ${soNoComputador}`}>Previsão</th>
+              {mostraValor && <th className={`${thCls} ${soNoComputador} text-right`}>Total</th>}
             </tr>
           </thead>
           <tbody>
@@ -145,29 +169,19 @@ export default function OrdensPage() {
                       </span>
                     )}
                   </div>
+                  <div className="md:hidden mt-1.5 text-xs text-grafite/60" onClick={(e) => !o.mecanico && souMecanico && e.stopPropagation()}>
+                    {mecanicoDa(o)}
+                  </div>
                 </td>
-                <td className={tdCls} onClick={(e) => !o.mecanico && souMecanico && e.stopPropagation()}>
-                  {o.mecanico ? (
-                    o.mecanico.nome
-                  ) : souMecanico && o.status !== 'ENTREGUE' && o.status !== 'CANCELADA' ? (
-                    <button
-                      type="button"
-                      disabled={assumir.isPending}
-                      onClick={() => assumir.mutate(o.id)}
-                      className="inline-flex items-center gap-1 text-sm font-bold text-laranja hover:underline"
-                    >
-                      <UserCheck size={14} /> Assumir
-                    </button>
-                  ) : (
-                    <span className="text-grafite/40">—</span>
-                  )}
+                <td className={`${tdCls} ${soNoComputador}`} onClick={(e) => !o.mecanico && souMecanico && e.stopPropagation()}>
+                  {mecanicoDa(o)}
                 </td>
-                <td className={`${tdCls} text-grafite/60 whitespace-nowrap`}>{dataBR(o.dataAbertura)}</td>
-                <td className={`${tdCls} whitespace-nowrap ${o.atrasada ? 'text-vermelho font-bold' : 'text-grafite/60'}`}>
+                <td className={`${tdCls} ${soNoComputador} text-grafite/60 whitespace-nowrap`}>{dataBR(o.dataAbertura)}</td>
+                <td className={`${tdCls} ${soNoComputador} whitespace-nowrap ${o.atrasada ? 'text-vermelho font-bold' : 'text-grafite/60'}`}>
                   {o.dataPrevista ? dataHoraBR(o.dataPrevista) : '—'}
                 </td>
                 {mostraValor && (
-                  <td className={`${tdCls} text-right whitespace-nowrap`}>
+                  <td className={`${tdCls} ${soNoComputador} text-right whitespace-nowrap`}>
                     <div className="font-bold tabular-nums">{o.garantia && o.total === 0 ? '—' : brl(o.total)}</div>
                     {o.formaPagamento ? (
                       <div className="text-[11px] font-bold text-verde inline-flex items-center gap-0.5">

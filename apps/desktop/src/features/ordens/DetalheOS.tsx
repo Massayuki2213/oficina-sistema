@@ -614,10 +614,15 @@ function Rodape({ os, usuario, acao, abrir }: PropsParte) {
   const secundarios = passos.filter((x) => !x.primario);
   const principais = passos.filter((x) => x.primario);
 
+  // No celular (o mecânico na oficina) o rodapé fica grudado embaixo da tela,
+  // então ele precisa ser baixo: os passos secundários lado a lado e compactos,
+  // Imprimir/Mais pequenos, e o passo principal na largura toda, por último —
+  // perto do polegar. No computador, tudo numa linha, na ordem de sempre.
+  const compacto = 'max-sm:py-2 max-sm:px-2 max-sm:text-sm max-sm:whitespace-normal';
   return (
-    <>
-      <div className="flex flex-wrap gap-2 mr-auto">
-        <BtnGhost icone={Printer} onClick={() => abrir('imprimir')} titulo="Imprimir a OS (ou salvar em PDF)">
+    <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+      <div className="order-2 flex flex-wrap gap-2 sm:order-none sm:mr-auto">
+        <BtnGhost icone={Printer} onClick={() => abrir('imprimir')} titulo="Imprimir a OS (ou salvar em PDF)" className={compacto}>
           Imprimir
         </BtnGhost>
         <MenuMais
@@ -633,16 +638,24 @@ function Rodape({ os, usuario, acao, abrir }: PropsParte) {
           ]}
         />
       </div>
-      {secundarios.map((x) => (
-        <BtnGhost key={x.rotulo} icone={x.icone} onClick={x.onClick} disabled={acao.ocupado}>
-          {x.rotulo}
-        </BtnGhost>
-      ))}
-      {principais.map((x) => (
-        <BtnPrimary key={x.rotulo} icone={x.icone} onClick={x.onClick} disabled={acao.ocupado}>
-          {x.rotulo}
-        </BtnPrimary>
-      ))}
-    </>
+      {secundarios.length > 0 && (
+        <div className="order-1 grid grid-cols-2 gap-2 sm:order-none sm:flex sm:flex-wrap">
+          {secundarios.map((x) => (
+            <BtnGhost key={x.rotulo} icone={x.icone} onClick={x.onClick} disabled={acao.ocupado} className={compacto}>
+              {x.rotulo}
+            </BtnGhost>
+          ))}
+        </div>
+      )}
+      {principais.length > 0 && (
+        <div className="order-3 grid gap-2 sm:order-none sm:flex">
+          {principais.map((x) => (
+            <BtnPrimary key={x.rotulo} icone={x.icone} onClick={x.onClick} disabled={acao.ocupado}>
+              {x.rotulo}
+            </BtnPrimary>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
