@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, DatabaseBackup, Download, KeyRound, Lock, LockOpen, LogOut, MonitorSmartphone } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, DatabaseBackup, Download, HardDrive, KeyRound, Lock, LockOpen, LogOut, MonitorSmartphone } from 'lucide-react';
 import { DESCRICAO_PERFIL, LABEL_PERFIL, type SessaoDTO, type StatusBackupDTO } from '@hermes/shared';
 import { ApiError, http, mensagemDeErro, urlDaApi } from '../../api/http';
 import { useAvisos } from '../../lib/avisos';
@@ -20,7 +21,9 @@ export default function ConfiguracoesPage() {
     { id: 'equipe', rotulo: 'Equipe', visivel: pode('gerenciarUsuarios') },
     { id: 'backup', rotulo: 'Backup', visivel: pode('gerenciarBackup') },
   ];
-  const [aba, setAba] = useState<Aba>('conta');
+  // ?aba=backup vem do alerta do painel; aba que a pessoa não vê não abre.
+  const [params] = useSearchParams();
+  const [aba, setAba] = useState<Aba>(() => abas.find((a) => a.id === params.get('aba') && a.visivel)?.id ?? 'conta');
 
   return (
     <div>
@@ -192,7 +195,11 @@ function Aparelhos() {
 }
 
 const tamanho = (bytes: number) =>
-  bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB` : `${Math.ceil(bytes / 1024)} KB`;
+  bytes > 1024 ** 3
+    ? `${(bytes / 1024 ** 3).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} GB`
+    : bytes > 1024 ** 2
+      ? `${(bytes / 1024 ** 2).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`
+      : `${Math.ceil(bytes / 1024)} KB`;
 
 function Backup() {
   const qc = useQueryClient();
@@ -250,6 +257,8 @@ function Backup() {
         </BtnPrimary>
       </section>
 
+      {s.hdExterno && <HdExterno hd={s.hdExterno} />}
+
       <section className="bg-white rounded-2xl border border-linha shadow-sm">
         <h2 className="px-4 py-3 border-b border-linha font-extrabold text-petroleo text-sm">Cópias guardadas ({s.total})</h2>
         {s.arquivos.length === 0 && <div className="px-4 py-6 text-sm text-grafite/40 text-center">Nenhuma cópia ainda.</div>}
@@ -266,5 +275,28 @@ function Backup() {
       </section>
       <p className="text-xs text-grafite/50">Para restaurar uma cópia, siga o passo a passo do manual de implantação (docs/IMPLANTACAO.md).</p>
     </div>
+  );
+}
+
+/** A segunda cópia, no HD externo: conectado, quantas cópias, espaço livre. */
+function HdExterno({ hd }: { hd: NonNullable<StatusBackupDTO['hdExterno']> }) {
+  const bom = hd.montado && !hd.erro;
+  return (
+    <section className={`rounded-2xl p-5 flex items-start gap-3 ${bom ? 'bg-white border border-linha' : 'bg-vermelho-bg'}`}>
+      <HardDrive className={`shrink-0 ${bom ? 'text-verde' : 'text-vermelho'}`} />
+      <div className="flex-1">
+        <div className="font-extrabold text-petroleo">
+          {!hd.montado ? 'HD externo não está conectado' : hd.erro ? 'HD externo com problema' : 'HD externo conectado'}
+        </div>
+        <p className="text-sm text-grafite/65 mt-0.5">
+          {hd.montado
+            ? `${hd.total} ${hd.total === 1 ? 'cópia' : 'cópias'} no HD, guardadas por ${hd.retencaoDias} dias${hd.ultimo ? `; a mais nova é de ${relativo(hd.ultimo.criadoEm)}` : ''}${
+                hd.livreBytes != null ? `. Espaço livre: ${tamanho(hd.livreBytes)}` : ''
+              }.`
+            : 'Conecte o HD externo. Enquanto ele estiver fora, as cópias ficam só neste computador; quando ele voltar, a mais nova é copiada sozinha.'}
+          {hd.erro && ` Última falha ao gravar: ${hd.erro}.`}
+        </p>
+      </div>
+    </section>
   );
 }

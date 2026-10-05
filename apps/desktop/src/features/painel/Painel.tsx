@@ -7,6 +7,7 @@ import {
   Car,
   CheckCircle2,
   ClipboardList,
+  DatabaseBackup,
   FileClock,
   FileText,
   HandCoins,
@@ -207,7 +208,8 @@ function Alertas({ a }: { a: AlertasDTO }) {
       !a.revisaoVencida?.length &&
       !a.orcamentosVencendo?.length &&
       !a.fiadoEmAtraso?.length &&
-      !a.comprasVencendo?.length);
+      !a.comprasVencendo?.length &&
+      !a.backup);
 
   if (nada) {
     return (
@@ -219,6 +221,25 @@ function Alertas({ a }: { a: AlertasDTO }) {
 
   return (
     <div className="space-y-5">
+      {/* Primeiro de tudo: sem backup em dia, todo o resto está em risco. */}
+      {a.backup && (
+        <Cartao
+          titulo="Backup precisa de atenção"
+          icone={DatabaseBackup}
+          acao={<Link to="/configuracoes?aba=backup" className="text-xs font-bold text-laranja hover:underline">Ver backup</Link>}
+        >
+          <ul className="px-4 py-3 space-y-1.5 text-sm text-vermelho">
+            {a.backup.atrasado && (
+              <li>
+                {a.backup.ultimoEm ? `A última cópia do banco é de ${relativo(a.backup.ultimoEm)}.` : 'Nenhuma cópia do banco foi feita ainda.'} Faça uma agora.
+              </li>
+            )}
+            {a.backup.hdAusente && <li>O HD externo não está conectado: as cópias estão só neste computador.</li>}
+            {a.backup.hdErro && <li>Não consegui gravar no HD externo: {a.backup.hdErro}.</li>}
+          </ul>
+        </Cartao>
+      )}
+
       {a.osAtrasadas.length > 0 && (
         <Cartao titulo={`OS atrasadas (${a.osAtrasadas.length})`} icone={AlertTriangle}>
           {a.osAtrasadas.slice(0, 8).map((o) => (
