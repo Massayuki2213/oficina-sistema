@@ -11,6 +11,9 @@ services:
     image: postgres:16-alpine
     container_name: hermes-postgres
     restart: unless-stopped
+    # O mesmo fuso da produção (docker-compose.prod.yml): o banco de desenvolvimento
+    # e o de testes se comportam como o da oficina.
+    command: ["postgres", "-c", "timezone=America/Sao_Paulo", "-c", "log_timezone=America/Sao_Paulo"]
     environment:
       POSTGRES_USER: hermes
       POSTGRES_PASSWORD: hermes_dev

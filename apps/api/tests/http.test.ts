@@ -440,6 +440,37 @@ describe('primeiro acesso', () => {
     await db.usuario.deleteMany();
     a = await atores(); // devolve os usuários de teste
   });
+
+  const novoDono = (email: string) => ({ oficinaNome: 'Oficina X', nome: 'Alguém', email, senha: 'senha-forte-1' });
+
+  it('depois que o Dono existe, ninguém mais cria outro pelo primeiro acesso (e nada muda)', async () => {
+    await db.usuario.deleteMany();
+    const primeiro = await app.inject({ method: 'POST', url: '/api/auth/primeiro-acesso', payload: novoDono('dono@x.com') });
+    expect(primeiro.statusCode).toBe(201);
+
+    const intruso = await app.inject({ method: 'POST', url: '/api/auth/primeiro-acesso', payload: novoDono('intruso@x.com') });
+    expect(intruso.statusCode).toBe(409);
+    expect(intruso.json().codigo).toBe('JA_CONFIGURADO');
+    expect(await db.usuario.findMany({ select: { email: true, perfil: true } })).toEqual([{ email: 'dono@x.com', perfil: 'DONO' }]);
+    expect((await get('/api/auth/situacao', '')).json().precisaConfigurar).toBe(false);
+
+    await db.usuario.deleteMany();
+    a = await atores();
+  });
+
+  it('três primeiros acessos ao mesmo tempo: só um vira Dono', async () => {
+    await db.usuario.deleteMany();
+    const respostas = await Promise.all(
+      ['a@x.com', 'b@x.com', 'c@x.com'].map((email) =>
+        app.inject({ method: 'POST', url: '/api/auth/primeiro-acesso', payload: novoDono(email) }),
+      ),
+    );
+    expect(respostas.map((r) => r.statusCode).sort()).toEqual([201, 409, 409]);
+    expect(await db.usuario.count()).toBe(1);
+
+    await db.usuario.deleteMany();
+    a = await atores();
+  });
 });
 
 describe('limite de tentativas no login', () => {

@@ -1,6 +1,23 @@
 import { execSync } from 'node:child_process';
+import { PrismaClient } from '@prisma/client';
 import { prepararUsuarioDaAplicacao } from '../src/lib/usuario-do-banco';
 import { SENHA_APP_TESTE, URL_TESTE } from './banco-teste';
+
+/**
+ * O banco de teste no fuso da oficina, como o de produção — vale também no
+ * Postgres do CI, que sobe em UTC e não aceita parâmetros na partida.
+ */
+async function fusoDaOficina(url: string) {
+  const banco = new URL(url).pathname.slice(1);
+  const db = new PrismaClient({ datasourceUrl: url });
+  try {
+    const [{ sql }] = await db.$queryRaw<{ sql: string }[]>`
+      SELECT format('ALTER DATABASE %I SET timezone TO %L', ${banco}::text, 'America/Sao_Paulo'::text) AS sql`;
+    await db.$executeRawUnsafe(sql);
+  } finally {
+    await db.$disconnect();
+  }
+}
 
 // ============================================================
 // Prepara o banco de TESTE: cria (o Prisma cria sozinho se faltar),
@@ -18,6 +35,7 @@ try {
     env: { ...process.env, DATABASE_URL: URL_TESTE },
   });
   await prepararUsuarioDaAplicacao(URL_TESTE, SENHA_APP_TESTE);
+  await fusoDaOficina(URL_TESTE);
   console.log('\n✅ banco de teste pronto — rode `npm test`');
 } catch (err) {
   console.error(`\n❌ não consegui preparar o banco de teste: ${(err as Error).message}`);
