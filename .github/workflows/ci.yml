@@ -3,6 +3,8 @@
 # e em paralelo: segredos no histórico do git e vulnerabilidades conhecidas.
 # Numa tag de versão (v1.0.0), a imagem é publicada no GitHub (ghcr.io):
 # é ela que o mini PC baixa (ops/instalar.sh e ops/atualizar.sh).
+# Ubuntu fixo em 24.04 (a base do Mint 22 do mini PC): o "ubuntu-latest" troca de
+# versão sozinho, e uma release não deve mudar de ambiente no meio.
 name: CI
 
 on:
@@ -18,7 +20,7 @@ concurrency:
 jobs:
   seguranca:
     name: Segredos e vulnerabilidades
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       GITLEAKS_VERSION: 8.30.1
@@ -44,7 +46,7 @@ jobs:
 
   qualidade:
     name: Lint, tipos, testes e build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     services:
@@ -96,7 +98,7 @@ jobs:
 
   docker:
     name: Imagem Docker
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Só publica se o resto passou: segredos, vulnerabilidades, testes e build.
     needs: [qualidade, seguranca]
     timeout-minutes: 25
