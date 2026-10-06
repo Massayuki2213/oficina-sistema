@@ -160,16 +160,18 @@ usuário **Dono**. Depois, em **Configurações**, o Dono:
 - Instale o **Google Chrome** entrando como `suporte`: no Firefox, baixe em
   <https://www.google.com/chrome> o pacote para Debian/Ubuntu e abra com o *Instalador de
   pacotes*.
-- Na conta `oficina`, abra o Chrome em **http://localhost** e deixe como página inicial:
-  *Configurações → Ao iniciar → Abrir uma página específica*.
-- Para o Chrome abrir sozinho ao entrar: **Menu → Aplicativos de inicialização → Adicionar →
-  Google Chrome**.
+- Na conta `oficina`, abra o Chrome em **http://localhost** e **instale como app**: ícone de
+  instalar no fim da barra de endereço → **Instalar**. O Hermes ganha ícone no menu e abre em
+  janela própria, sem a barra do navegador.
+- Para abrir sozinho ao entrar: **Menu → Aplicativos de inicialização → Adicionar → Hermes**.
 - **Impressora:** **Menu → Impressoras → Adicionar**. A maioria das USB funciona direto. O
   orçamento e a OS saem pela impressão do navegador.
 - **Leitor de código de barras USB:** funciona como teclado, sem configurar nada.
 
 **Celular, tablet, notebook:** na Wi-Fi **principal** da oficina, abra
-`http://<ip-do-mini-pc>`. No celular, *Adicionar à tela inicial* vira um atalho.
+`http://<ip-do-mini-pc>`. No celular, *Adicionar à tela inicial* cria um atalho com o ícone do
+Hermes. Ele abre no navegador: instalar como app de verdade fora do próprio mini PC exige
+HTTPS, que fica para depois da 1.0.
 
 > O navegador mostra **"Não seguro"** ao lado do endereço. É porque a rede interna usa
 > `http`, não `https`. Os dados não saem da oficina. HTTPS fica para depois da 1.0.

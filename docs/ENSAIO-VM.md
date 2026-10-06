@@ -147,6 +147,9 @@ Marque cada item:
 - [ ] **Do Windows**, no navegador: `http://<IP da VM>` abre a tela de primeiro acesso.
       Crie o Dono.
 - [ ] **Na VM**, no Firefox: `http://localhost` abre o mesmo sistema.
+- [ ] *(Opcional, com o Chrome instalado na VM, seção 4 do manual)* Em `http://localhost`, o
+      ícone de instalar na barra de endereço → **Instalar**. O Hermes abre em janela própria e
+      aparece no menu.
 - [ ] **Configurações → Backup → Fazer backup agora**. O bloco **"HD externo
       conectado"** fica verde, com as cópias. O sistema também faz uma sozinho
       15 segundos depois de subir.

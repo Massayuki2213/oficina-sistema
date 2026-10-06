@@ -6,10 +6,11 @@ import { COD } from '../lib/errors.js';
 // ============================================================
 // A API serve a tela (o build do Vite).
 //
-// Um endereço só para tudo: http://servidor:3333 abre o sistema no
-// navegador de qualquer PC ou tablet da oficina, e o app desktop
-// (Electron) é só uma janela apontada para ele. A tela sempre bate
-// com a versão da API — atualizou o servidor, atualizou todo mundo.
+// Um endereço só para tudo: http://<mini-pc> abre o sistema no
+// navegador de qualquer aparelho da oficina; instalado como app (PWA,
+// manifest.webmanifest) no balcão, continua sendo esta mesma página.
+// A tela sempre bate com a versão da API — atualizou o servidor,
+// atualizou todo mundo.
 // ============================================================
 
 export async function registrarInterfaceWeb(app: FastifyInstance) {
