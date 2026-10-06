@@ -30,7 +30,7 @@ Documentação interativa da API: http://localhost:3333/api/docs.
 | `npm run lint` | ESLint em todo o monorepo |
 | `npm run typecheck` | `tsc --noEmit` nos três pacotes |
 | `npm run test:prepare` | aplica as migrações no banco de **teste** (`hermes_test`) e prepara o usuário `hermes_app` |
-| `npm test` | contrato (21) + API contra Postgres real (231) + tela (20) |
+| `npm test` | contrato (21) + API contra Postgres real (254) + tela (20) |
 | `npm run build` | tela (`apps/desktop/dist`) e API (`apps/api/dist`) |
 | `npm start` | API compilada servindo a tela compilada (como em produção) |
 | `npm run docker:build` | imagem de produção `hermes:1.0.0` |
@@ -45,7 +45,7 @@ Documentação interativa da API: http://localhost:3333/api/docs.
 │   │   ├── src/
 │   │   │   ├── app.ts        # monta o Fastify: plugins + módulos sob /api
 │   │   │   ├── server.ts     # sobe, agenda o backup, encerra com calma
-│   │   │   ├── cli/          # comandos de linha (redefinir senha)
+│   │   │   ├── cli/          # comandos de linha (redefinir senha, abrir e fazer backup)
 │   │   │   ├── plugins/      # sessão, erros, segurança (helmet/CORS), docs, tela
 │   │   │   ├── lib/          # env validado, prisma, erros, datas, paginação, auditoria
 │   │   │   ├── dominio/      # regras que cruzam módulos: estoque (kardex), preço, caixa, fiado
@@ -59,7 +59,9 @@ Documentação interativa da API: http://localhost:3333/api/docs.
 │       │   ├── features/<x>/ # uma pasta por área (ordens, orcamentos, estoque...)
 │       │   ├── lib/          # máscaras, formatos, período, CSV, WhatsApp, avisos
 │       │   └── rotas.tsx     # tabela única: menu + permissão de cada tela
-│       └── electron/         # app de desktop (janela para o servidor) — pacote à parte
+│       └── electron/         # app de desktop: CONGELADO, fora da entrega da 1.0 (ADR 0012)
+│
+├── ops/                      # scripts do mini PC: instalar, atualizar, backup, restaurar
 │
 └── packages/shared/          # CONTRATO entre API e tela
     └── src/
@@ -110,8 +112,9 @@ Documentação interativa da API: http://localhost:3333/api/docs.
   repete com a mesma chave; o servidor devolve a resposta guardada em vez de lançar de novo
   (`plugins/idempotencia.ts`). Nada a fazer num endpoint novo: vale para todos.
   ([ADR 0011](adr/0011-idempotencia-dos-post.md))
-- **A API serve a tela** (mesma origem, sem CORS em produção) e o app de desktop é só uma
-  janela para ela. ([ADR 0004](adr/0004-api-serve-a-tela-e-desktop-e-janela.md))
+- **A API serve a tela** (mesma origem, sem CORS em produção): todo aparelho usa o navegador.
+  ([ADR 0004](adr/0004-api-serve-a-tela-e-desktop-e-janela.md),
+  [ADR 0012](adr/0012-mini-pc-linux-e-so-navegador.md))
 
 ## Receitas
 
@@ -164,7 +167,10 @@ O banco de teste vem de `TEST_DATABASE_URL` ou do Postgres de desenvolvimento
 (igual à produção); o `db` dos testes, que monta cenários e limpa as tabelas, como dono.
 `TEST_DATABASE_URL` precisa, portanto, de um usuário que possa criar usuários.
 
-## App de desktop
+## App de desktop (congelado)
+
+**Fora da entrega da 1.0:** a oficina usa só o navegador ([ADR 0012](adr/0012-mini-pc-linux-e-so-navegador.md)).
+O código fica aqui caso volte a fazer sentido; não é testado nem empacotado.
 
 Pasta `apps/desktop/electron/`, **fora dos workspaces** (o Electron tem ~100 MB e não deve
 entrar no build do servidor nem no CI).
@@ -199,9 +205,56 @@ preload só atende a página local de configuração.
 ## CI
 
 `.github/workflows/ci.yml`: lint → tipos → migrações no Postgres do serviço → testes → build →
-build da imagem Docker (sem publicar). Em paralelo, **segredos no histórico inteiro do git**
+build da imagem Docker. Em paralelo, **segredos no histórico inteiro do git**
 (gitleaks) e **vulnerabilidades conhecidas** nas dependências de produção (`npm audit`, reprova
 em alta ou crítica). Todo PR precisa passar.
+
+Numa **tag de versão** (`v1.0.0`, `v1.0.1-rc.1`), o último job publica a imagem em
+`ghcr.io/massayuki2213/oficina-sistema:<tag>`, só se todo o resto passou. É ela que o mini PC
+baixa.
+
+## Publicar uma versão
+
+1. Atualize o [CHANGELOG](../CHANGELOG.md) e a `version` dos `package.json`.
+2. PR da `dev` para a `main`; CI verde; merge.
+3. Tag na `main`: `git tag -a v1.0.1 -m "Hermes 1.0.1"` e `git push origin v1.0.1`.
+4. Espere o CI da tag publicar a imagem. Na primeira vez, deixe o pacote **público** no GitHub
+   (*Packages → oficina-sistema → Package settings → Change visibility*).
+5. Na oficina: `sudo /opt/hermes/ops/atualizar.sh v1.0.1` (ver
+   [IMPLANTACAO.md](IMPLANTACAO.md#6-atualizar)).
+
+Versão de ensaio: a mesma coisa com `-rc.N` no fim, a partir da `dev`, para testar antes numa
+VM ([ENSAIO-VM.md](ENSAIO-VM.md)).
+
+## Scripts do mini PC (`ops/`)
+
+`instalar.sh`, `atualizar.sh`, `restaurar.sh`, `backup-agora.sh`, `hd-montar.sh` (timer do HD
+externo), `nuvem.sh` (rclone opcional) e `comum.sh` (funções de todos). O mini PC roda os
+scripts **da versão instalada**: `/opt/hermes` é um clone do repositório parado na tag.
+
+- Bash, comentados em português, idempotentes; o que pergunta lê da entrada padrão.
+- `main "$@"` no fim de cada um: o bash lê o script inteiro antes de rodar, e o `git checkout`
+  do `atualizar.sh` pode trocar o arquivo no meio.
+- Fim de linha LF (`.gitattributes`) e bit de execução no git
+  (`git update-index --chmod=+x ops/x.sh` para um script novo).
+- Antes de commitar:
+
+  ```bash
+  docker run --rm -v "$PWD/ops:/mnt:ro" -w /mnt koalaman/shellcheck:stable -x -P /mnt -s bash -e SC2001 *.sh
+  ```
+
+- Mexeu em `restaurar.sh`, `atualizar.sh`, `backup-agora.sh` ou `nuvem.sh`? Rode o teste de
+  ponta a ponta (uns 10 minutos):
+
+  ```bash
+  bash ops/teste/rodar.sh
+  ```
+
+  Um container Ubuntu 24.04 com o cliente Docker faz o papel do mini PC, com a imagem do
+  código atual num registro local. Ele cobre backup, restauração (inclusive cifrada, cortada
+  e com erro no meio) e atualizar/voltar de versão, e termina em `TUDO CERTO` ou na lista do
+  que falhou.
+- O que mudou no `instalar.sh` precisa de systemd: ensaie numa VM ([ENSAIO-VM.md](ENSAIO-VM.md)).
 
 `.github/dependabot.yml`: PRs de atualização toda segunda para a `dev`, agrupados (produção /
 desenvolvimento; versão maior em PR próprio). Ligue também **Dependabot security updates** em

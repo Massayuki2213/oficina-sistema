@@ -1,6 +1,6 @@
 # 0004 — A API serve a tela; o app de desktop é uma janela
 
-**Situação:** aceita (v1.0)
+**Situação:** aceita (v1.0). A parte do app de desktop foi substituída pela [0012](0012-mini-pc-linux-e-so-navegador.md): a 1.0 usa só o navegador.
 
 ## Contexto
 

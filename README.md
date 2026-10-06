@@ -47,7 +47,7 @@ Peças e produtos com custo, venda e margem · entrada e saída com histórico d
 Livro-caixa alimentado automaticamente quando a OS é paga · despesas por categoria · **Contas a Receber** para parcelado e fiado · **Compras e Contas a Pagar** com saldo por distribuidor e acerto de dívida · relatórios com gráficos de faturamento, lucro, serviços mais vendidos e para onde o dinheiro está indo.
 
 **Administração**
-Três perfis de acesso (Dono, Atendente, Mecânico) com permissão por ação · gestão de usuários pela própria tela · **histórico de quem fez o quê** · **backup automático diário** do banco de dados, inclusive ao ligar o computador.
+Três perfis de acesso (Dono, Atendente, Mecânico) com permissão por ação · gestão de usuários pela própria tela · **histórico de quem fez o quê** · **backup automático diário** do banco de dados, inclusive ao ligar o computador, com segunda cópia num HD externo e aviso ao Dono quando algo falha.
 
 ---
 
@@ -71,7 +71,7 @@ Nenhuma informação é digitada duas vezes. É esse encadeamento — e não a q
 - **Mostra lucro, não só faturamento.** A maioria dos sistemas mostra quanto entrou. O Hermes desconta despesa e custo de peça e diz quanto **sobrou**.
 - **Dados compartilhados.** Recepção, oficina e escritório enxergam a mesma informação, na hora.
 - **Cada um vê o que deve ver.** O mecânico não abre o financeiro. O atendente não altera preço de custo.
-- **Backup sem ninguém lembrar de fazer.** Cópia diária automática, com retenção configurável.
+- **Backup sem ninguém lembrar de fazer.** Cópia diária automática no computador e num HD externo, e o Dono é avisado se ela atrasar.
 
 ---
 
@@ -81,13 +81,13 @@ Construído com tecnologia atual e de mercado — não é planilha com botão.
 
 | Camada | Tecnologia |
 |---|---|
-| Tela | React 18 + TypeScript + TanStack Query, servida pelo próprio servidor |
-| App para Windows | Electron (instalador): uma janela para o servidor da oficina |
+| Tela | React 18 + TypeScript + TanStack Query, servida pelo próprio servidor: abre no navegador de qualquer aparelho da rede |
 | Servidor / regras de negócio | Node.js + Fastify 5 + TypeScript |
 | Contrato servidor ⇄ tela | Pacote compartilhado com validação zod e tipos das respostas |
 | Banco de dados | PostgreSQL 16 via Prisma, com backup automático diário |
 | Segurança | Sessão em cookie httpOnly, senhas com bcrypt, permissão por perfil, histórico de ações |
-| Entrega | Imagem Docker única; CI com lint, tipos, 272 testes, build, varredura de segredos e `npm audit` |
+| Entrega | Mini PC com Linux Mint e Docker; imagem publicada no GitHub a cada versão, com scripts para instalar, atualizar, fazer backup e restaurar |
+| Qualidade | CI com lint, tipos, 295 testes, build, varredura de segredos e `npm audit` |
 
 As regras de negócio (baixa de estoque, cálculo de lucro, geração de contas a receber) ficam no
 servidor, não na tela — o número é o mesmo para todo mundo. Dinheiro é calculado em centavos,
@@ -111,7 +111,8 @@ decisões técnicas: [docs/adr](docs/adr/README.md).
 
 ## Instalar e ver funcionando
 
-- **Na oficina** (um computador servidor + os PCs do balcão): [docs/IMPLANTACAO.md](docs/IMPLANTACAO.md).
+- **Na oficina** (um mini PC com Linux, que também é o computador do balcão; os outros
+  aparelhos usam o navegador): [docs/IMPLANTACAO.md](docs/IMPLANTACAO.md).
 - **Para desenvolver ou demonstrar** (com um cenário completo de clientes, OS e caixa):
   [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md).
 

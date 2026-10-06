@@ -1,233 +1,343 @@
 # Hermes — Instalação na oficina
 
-Guia para quem vai instalar e manter o Hermes funcionando. Não precisa ser programador,
-mas precisa saber abrir o terminal e copiar comandos.
+O Hermes roda num **mini PC com Linux Mint** que fica sempre ligado na oficina. Ele é o
+servidor e também o computador do balcão. Os outros aparelhos (celular, tablet, notebook)
+só abrem o navegador: não se instala nada neles.
 
-## Como o Hermes roda
+Este guia é para quem instala e mantém o sistema. Não precisa ser programador, mas precisa
+saber abrir o terminal e copiar comandos. Antes da primeira vez na oficina, vale ensaiar numa
+máquina virtual: [ENSAIO-VM.md](ENSAIO-VM.md).
+
+**Onde roda cada comando:** no mini PC, em **Menu → Terminal**, entrando na conta
+**`suporte`**. Os comandos com `sudo` pedem a senha dessa conta.
+
+## Como fica
 
 ```
-┌──────────────── Computador servidor (fica ligado) ────────────────┐
-│  Docker:  [ banco PostgreSQL ]  ←→  [ Hermes: API + tela ]  :3333  │
-│           backup automático diário (pg_dump)                      │
-└───────────────────────────────────────────────────────────────────┘
-        ▲                    ▲                      ▲
-   App Hermes (PC       navegador (tablet      navegador
-   do balcão)           na oficina)            do escritório
+┌──────────── Mini PC (Linux Mint, sempre ligado, no nobreak) ────────────┐
+│  Docker:  [ banco PostgreSQL ]  ←→  [ Hermes: sistema + tela ]  porta 80 │
+│  Backup diário → SSD (14 dias)  +  HD externo USB (60 dias)              │
+│  Chrome do balcão: http://localhost                                      │
+└──────────────────────────────────────────────────────────────────────────┘
+          ▲ rede da oficina (cabo / Wi-Fi)                ▲ Tailscale
+   celular, tablet, notebook:                      suporte à distância
+   http://<ip-do-mini-pc>                          (sem abrir porta no roteador)
 ```
 
-- **Um computador é o servidor**: guarda o banco e serve o sistema na porta `3333`.
-  Pode ser um PC da própria oficina (Windows com Docker Desktop — veja os cuidados em
-  [1.1](#11-servidor-num-pc-da-própria-oficina-windows)) ou um mini-PC com Linux.
-- **Os outros aparelhos só abrem o sistema**: pelo app Hermes (Windows) ou pelo navegador,
-  em `http://<ip-do-servidor>:3333`. Nada é instalado neles além do app.
-- Atualizar o servidor atualiza todo mundo.
+- O sistema sobe sozinho quando o mini PC liga, **sem ninguém entrar** no Linux.
+- Atualizar o mini PC atualiza todo mundo: os aparelhos só recarregam a página.
 
-## 1. Preparar o servidor
+## O que comprar
 
-1. Instale o **Docker Desktop** (Windows) ou **Docker Engine** (Linux).
-   No Windows, marque em *Settings → General* a opção **Start Docker Desktop when you sign in**.
-2. Deixe o IP do servidor **fixo** (reserva de DHCP no roteador). Os outros PCs vão
-   apontar para ele.
-3. Libere a porta 3333 no firewall do servidor. No Windows (PowerShell como administrador):
-
-   ```powershell
-   netsh advfirewall firewall add rule name="Hermes" dir=in action=allow protocol=TCP localport=3333
-   ```
-
-4. Copie a pasta do projeto para o servidor (ou `git clone`).
-
-### 1.1 Servidor num PC da própria oficina (Windows)
-
-Funciona bem e não custa nada — desde que o PC aguente e ninguém o "desligue" do sistema.
-
-**Antes de instalar, confira** (Ctrl+Shift+Esc → *Desempenho*):
-
-| O quê | Onde ver | Precisa |
+| Item | Para quê | Recomendação |
 |---|---|---|
-| Memória | *Memória* | **8 GB** ou mais (com 4 GB funciona mal) |
-| Virtualização | *CPU* → "Virtualização" | **Habilitado**. Se estiver desabilitado, ligue na BIOS (Intel VT-x / AMD SVM) |
-| Windows | *Configurações → Sistema → Sobre* | 10 ou 11, **64 bits** |
-| Disco | *Disco* | SSD de preferência (HD comum funciona, mais lento) |
+| Mini PC | Servidor e balcão | Intel N100, 16 GB de memória, SSD de 512 GB |
+| Nobreak | Segura as quedas curtas de luz | 600 VA; no mini PC e no roteador |
+| HD externo USB | Segunda cópia do backup | Qualquer um a partir de 500 GB (as cópias são pequenas) |
+| Cabo de rede | Mini PC no roteador | Mais estável que Wi-Fi para o servidor |
 
-O Docker Desktop usa o **WSL 2** do Windows: o instalador oferece ativar — aceite e
-reinicie quando ele pedir.
+## 1. Preparar o mini PC
 
-**Para o sistema voltar sozinho** (queda de luz, alguém desligou o PC):
+### Ligar sozinho quando a luz volta (BIOS)
 
-- **Login automático no Windows.** O Docker Desktop só sobe depois que alguém entra no
-  Windows. `Win+R` → `netplwiz` → desmarque *"Os usuários devem digitar um nome de usuário e
-  uma senha"*. (No Windows 11, se a opção não aparecer, desligue antes *Configurações →
-  Contas → Opções de entrada → "Para maior segurança, permitir apenas o Windows Hello..."*.)
-- **Nunca suspender.** *Configurações → Sistema → Energia* → "Suspender: **Nunca**" (a tela
-  pode apagar à vontade).
-- **Windows Update fora do expediente.** *Windows Update → Opções avançadas → Horário ativo*
-  cobrindo o horário da oficina — assim ele não reinicia no meio do atendimento.
-- Opcional: na BIOS, *Restore on AC power loss → Power On* faz o PC ligar sozinho quando a
-  luz volta.
+Ligue o mini PC apertando **Del** (em alguns modelos, **F2**) até abrir a BIOS. Procure a opção
+que diz o que fazer quando a energia volta. Ela muda de nome conforme o fabricante:
 
-**O mesmo PC pode ser o do balcão:** abra `http://localhost:3333` no navegador (ou instale o
-app Hermes e informe `localhost:3333`). Pode desligar no fim do dia: ao ligar, o sistema volta
-e, se a última cópia de backup tiver mais de 24 h, faz uma nova na hora.
+- *Restore on AC Power Loss*
+- *AC Power Recovery*
+- *Power On After Power Failure*
+- *State After G3*
 
-## 2. Configurar
+Escolha **Power On** (ou *S0*). Salve e saia (normalmente **F10**).
 
-Na pasta do projeto, crie um arquivo **`.env`** com:
+Sem isso, depois de uma queda de luz longa, o mini PC fica desligado até alguém apertar o
+botão, e a oficina inteira fica sem sistema.
 
-```ini
-# Senha do banco — invente uma forte, cole depois do "=" e guarde em lugar seguro.
-POSTGRES_PASSWORD=
+### Nobreak
 
-# Chave das sessões — gere com  openssl rand -hex 32  e cole depois do "="
-# (sem openssl: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-SESSAO_SEGREDO=
+- Mini PC e roteador nas tomadas **com bateria** do nobreak. O monitor pode ir na tomada sem
+  bateria.
+- O nobreak segura as quedas curtas e os "piscas" de luz, que são as que mais estragam disco.
+- Numa queda longa, a bateria acaba e o mini PC desliga sem aviso. O banco aguenta (o
+  PostgreSQL se recupera sozinho), e a BIOS liga o mini PC quando a luz volta.
 
-# Opcionais
-# SESSAO_DURACAO=12h          # tempo sem uso até pedir login de novo (30m, 12h, 2d)
-# BACKUP_SENHA=               # cifra as cópias de backup — leia "Backup cifrado" (seção 5)
-# HERMES_PORT=3333            # porta no servidor
-# TZ=America/Sao_Paulo        # fuso da oficina
-# BACKUP_RETENCAO_DIAS=14     # quantos dias de cópias guardar
-```
+### Rede: IP fixo e Wi-Fi de visitantes
 
-> Com qualquer um dos dois em branco, o Docker nem começa (e diz qual falta). O sistema
-> também **se recusa a subir** com a chave de exemplo do `.env.example` ou com menos de
-> 32 caracteres. É de propósito.
+- **IP fixo do mini PC.** Os celulares e o suporte acham o sistema pelo IP. Depois da
+  instalação (seção 3), o resumo mostra o IP. No painel do roteador, faça uma **reserva de
+  DHCP** para o mini PC com esse IP. O nome varia: "Reserva de endereço", "Vincular IP e MAC",
+  "DHCP estático".
+- **Wi-Fi de visitantes separada.** Cliente esperando o carro usa a rede **de visitantes**
+  ("Rede de convidados" no roteador). Na rede principal só ficam o mini PC e os aparelhos da
+  equipe: quem está nela enxerga o sistema. Se o roteador não tiver rede de visitantes, troque
+  a senha da Wi-Fi principal e não a passe para clientes.
 
-A `POSTGRES_PASSWORD` é a do **dono do banco**, usada só para criar e atualizar as tabelas.
-O sistema em si conecta com um segundo usuário, `hermes_app`, que só lê e grava dados — ele é
-criado sozinho na partida, com uma senha nova a cada vez. Não há nada a configurar.
+## 2. Instalar o Linux Mint
 
-## 3. Subir
+### Pendrive de instalação
+
+Num computador com Windows:
+
+1. Baixe o **Linux Mint 22.3 Cinnamon** (64 bits) em <https://linuxmint.com/download.php>.
+2. Grave num pendrive de 8 GB ou mais com o **Rufus** (<https://rufus.ie>): escolha o pendrive
+   e o arquivo `.iso` e clique em *Iniciar*. **O pendrive é apagado.**
+
+### Instalação
+
+1. Pendrive no mini PC; ligue apertando **F7** (ou **F11**/**Esc**) para escolher o pendrive.
+2. Na área de trabalho do Mint, clique duas vezes em **Install Linux Mint**.
+3. Idioma **Português do Brasil**, teclado **Português (Brasil)**.
+4. **Apagar disco e instalar o Linux Mint.** O SSD do mini PC é todo do Hermes.
+5. Fuso: **São Paulo**.
+6. Conta de administrador:
+   - Seu nome: `Suporte`
+   - Nome do computador: `hermes-oficina`
+   - Usuário: `suporte`
+   - Uma senha forte
+   - **Exigir senha para entrar**
+
+   Essa senha fica com quem cuida do sistema, não com a oficina.
+7. Reinicie, tire o pendrive e entre como `suporte`.
+
+### A conta do balcão (sem administrador)
+
+Quem usa o balcão entra numa conta que **não instala nada e não mexe no servidor**.
+
+1. Entrando como `suporte`: **Menu → Usuários e grupos** (pede a senha) → **Adicionar**.
+2. Tipo de conta: **Padrão**. Nome: `Oficina`, usuário: `oficina`, e uma senha simples que a
+   equipe saiba.
+3. Não marque nada de administrador, e **não** coloque essa conta no grupo `docker` (quem
+   está nele manda no servidor inteiro).
+
+O dia a dia é na conta `oficina`. A conta `suporte` serve só para instalar, atualizar e
+resolver problema.
+
+## 3. Instalar o Hermes
+
+**Conecte o HD externo antes.** Depois, no Terminal da conta `suporte`:
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+sudo apt install -y git
+sudo git clone --branch v1.0.0 https://github.com/Massayuki2213/oficina-sistema.git /opt/hermes
+sudo /opt/hermes/ops/instalar.sh
 ```
 
-Na primeira vez demora alguns minutos (monta a imagem). Depois:
+O instalador mostra 9 passos e pode rodar de novo quantas vezes quiser: o que já está feito,
+ele só confere. Ele faz:
 
-- `docker compose -f docker-compose.prod.yml ps` — os dois serviços devem aparecer como *healthy*;
-- abra **http://localhost:3333** no próprio servidor.
+1. Confere o computador e a internet.
+2. Acerta o fuso para São Paulo e o relógio pela internet, e desliga a suspensão (o servidor
+   nunca dorme).
+3. Instala o Docker como serviço que sobe no boot.
+4. Cria `/opt/hermes/.env` com senhas aleatórias, só na primeira vez (veja
+   [Onde fica cada coisa](#onde-fica-cada-coisa)).
+5. Prepara o HD externo. **Pergunta:** ele lista os discos (sem o do sistema). Digite o do HD
+   (ex.: `/dev/sdb`) e depois `APAGAR` para formatar. Um HD que já é do Hermes (reinstalação)
+   é aproveitado sem formatar.
+6. Liga as atualizações de segurança automáticas, sem reiniciar sozinho.
+7. Liga o Tailscale. **Pergunta:** aparece um link; abra no navegador e entre com a conta
+   Tailscale do suporte (seção 7).
+8. Baixa o sistema e sobe.
+9. Mostra os endereços:
 
-Na primeira abertura aparece o **Primeiro acesso**: nome da oficina e o usuário **Dono**.
-Depois, em **Configurações**, o Dono:
+```
+    Nesta máquina:        http://localhost
+    Na rede da oficina:   http://192.168.0.50   (reserve este IP no roteador)
+    Suporte (Tailscale):  http://100.101.102.103
+```
 
-- completa os dados da oficina (CNPJ, telefone, endereço, **logo**, texto do rodapé);
-- ajusta as regras (margem padrão, desconto sem senha, validade do orçamento, garantia);
-- cadastra a equipe em **Equipe** (cada pessoa com o próprio e-mail e senha).
+Abra **http://localhost**. A tela de **Primeiro acesso** pede o nome da oficina e cria o
+usuário **Dono**. Depois, em **Configurações**, o Dono:
 
-Os containers voltam sozinhos quando o computador reinicia (`restart: unless-stopped`).
+- completa os dados da oficina (CNPJ, telefone, endereço, **logo**, rodapé);
+- ajusta as regras (margem, desconto sem senha, validade do orçamento, garantia);
+- cadastra a equipe em **Equipe**, cada pessoa com o próprio e-mail e senha.
 
-## 4. Instalar o app nos outros PCs
+## 4. O balcão e os outros aparelhos
 
-1. Gere o instalador (numa máquina de desenvolvimento, ver [DESENVOLVIMENTO.md](DESENVOLVIMENTO.md#app-de-desktop))
-   ou use o `Hermes Setup 1.0.0.exe` já gerado.
-2. Instale em cada PC. Na primeira abertura, informe o endereço do servidor — por exemplo
-   `192.168.0.10:3333` (descubra o IP no servidor com `ipconfig`).
-3. Pronto. Para trocar de servidor depois: menu **Hermes → Trocar servidor...**
+**Balcão (o próprio mini PC, conta `oficina`):**
 
-Tablet ou celular: é só abrir o endereço no navegador.
+- Instale o **Google Chrome** entrando como `suporte`: no Firefox, baixe em
+  <https://www.google.com/chrome> o pacote para Debian/Ubuntu e abra com o *Instalador de
+  pacotes*.
+- Na conta `oficina`, abra o Chrome em **http://localhost** e deixe como página inicial:
+  *Configurações → Ao iniciar → Abrir uma página específica*.
+- Para o Chrome abrir sozinho ao entrar: **Menu → Aplicativos de inicialização → Adicionar →
+  Google Chrome**.
+- **Impressora:** **Menu → Impressoras → Adicionar**. A maioria das USB funciona direto. O
+  orçamento e a OS saem pela impressão do navegador.
+- **Leitor de código de barras USB:** funciona como teclado, sem configurar nada.
+
+**Celular, tablet, notebook:** na Wi-Fi **principal** da oficina, abra
+`http://<ip-do-mini-pc>`. No celular, *Adicionar à tela inicial* vira um atalho.
+
+> O navegador mostra **"Não seguro"** ao lado do endereço. É porque a rede interna usa
+> `http`, não `https`. Os dados não saem da oficina. HTTPS fica para depois da 1.0.
 
 ## 5. Backup — leia esta parte
 
-O Hermes faz **uma cópia completa do banco por dia** (e ao ligar, se a última tiver mais de
-24 h), guardando as dos últimos 14 dias. Em **Configurações → Backup** o Dono vê a situação,
-faz uma cópia na hora e **baixa** qualquer uma delas.
+### Como funciona
 
-**Uma cópia que só existe no mesmo computador não protege de roubo, incêndio ou HD queimado.**
-Toda semana, baixe o backup mais recente para um pendrive ou para a nuvem (Google Drive,
-OneDrive...).
+- O sistema faz **uma cópia completa do banco por dia**. Ao ligar, se a última tiver mais de
+  24 h, faz uma na hora.
+- Cada cópia vai para dois lugares: o **SSD** do mini PC (guarda 14 dias) e o **HD externo**
+  (guarda 60 dias). Os dois nunca ficam com menos de 3 cópias.
+- Em **Configurações → Backup** o Dono vê a situação dos dois lugares, faz uma cópia na hora e
+  **baixa** qualquer uma.
+- O **painel do Dono avisa** quando a última cópia passa de 24 h, quando o HD externo está
+  desconectado e quando a gravação no HD falha.
 
-Para copiar todas as cópias de uma vez, direto do servidor:
+Pelo terminal: `sudo /opt/hermes/ops/backup-agora.sh`.
+
+### O HD externo
+
+- **Fica sempre conectado** no mini PC. Não use para outras coisas e não formate.
+- Desconectou? O painel avisa. Ao conectar de novo, ele é montado em até 5 minutos, e a cópia
+  mais nova vai para ele na hora seguinte (ou na hora, com *Fazer backup agora*).
+- O instalador o deixa escondido no gerenciador de arquivos, para ninguém "ejetar" sem querer.
+
+### Cópia fora da oficina e a cifra
+
+O HD fica do lado do mini PC: protege de disco queimado, mas não de roubo ou incêndio. Para
+isso, uma cópia precisa estar **fora** da oficina. E a cópia leva **tudo** (clientes,
+telefones, o caixa): fora da oficina, ela tem que ser **cifrada**.
+
+**Ligar a cifra.** Se houver qualquer chance de uma cópia ou o HD sair da oficina, faça isso
+**no dia da instalação**:
 
 ```bash
-docker compose -f docker-compose.prod.yml cp app:/app/backups ./copias-hermes
+sudo nano /opt/hermes/.env
+#   acrescente uma linha:  BACKUP_SENHA=uma-frase-longa-que-so-o-dono-sabe   (12+ caracteres)
+#   salve com Ctrl+O, Enter, e saia com Ctrl+X
+sudo docker compose -f /opt/hermes/docker-compose.prod.yml up -d
 ```
+
+- As cópias novas saem como `hermes-...sql.enc`. Em Configurações → Backup aparece "Cópias
+  cifradas".
+- As cópias **antigas continuam sem cifra** até vencerem (14 dias no SSD, 60 no HD). Por isso,
+  ligue a cifra antes de o HD sair.
+
+> **Perdeu a senha, perdeu as cópias.** Não há como abrir sem ela. Guarde-a **fora** do mini
+> PC e **longe** do HD: gerenciador de senhas do Dono, ou papel no cofre.
+
+Com a cifra ligada, duas formas de ter a cópia de fora:
+
+- **Pendrive:** o Dono baixa a mais nova em Configurações → Backup, toda semana, e leva para
+  casa.
+- **Nuvem, automático (opcional):** com o `rclone`, uma vez por dia. Configure o destino
+  (Google Drive, OneDrive...) e ligue:
+
+  ```bash
+  sudo apt install -y rclone
+  sudo rclone config                                   # cria o "remoto", ex.: gdrive
+  sudo /opt/hermes/ops/nuvem.sh ativar gdrive:hermes   # liga a cópia diária
+  sudo /opt/hermes/ops/nuvem.sh status
+  ```
+
+  Só vão cópias cifradas: sem `BACKUP_SENHA`, ele não liga. Na nuvem ficam 90 dias.
 
 ### Restaurar uma cópia
 
-> Restaurar **substitui tudo** que está no banco pelo conteúdo da cópia. Faça um backup
-> do estado atual antes, por garantia.
+> Restaurar **substitui todos os dados** pelos da cópia.
 
 ```bash
-# 1. para o sistema (o banco continua de pé)
-docker compose -f docker-compose.prod.yml stop app
-
-# 2. manda o arquivo para dentro do container do banco e restaura
-docker compose -f docker-compose.prod.yml cp ./hermes-2026-09-30_093635.sql db:/tmp/restaurar.sql
-docker compose -f docker-compose.prod.yml exec db psql -U hermes -d hermes -v ON_ERROR_STOP=1 -f /tmp/restaurar.sql
-
-# 3. sobe o sistema de novo (ele aplica migrações pendentes, se a cópia for de uma versão anterior)
-docker compose -f docker-compose.prod.yml start app
+sudo /opt/hermes/ops/restaurar.sh                          # escolhe numa lista (SSD e HD)
+sudo /opt/hermes/ops/restaurar.sh /media/.../hermes-...sql # ou um arquivo de outro lugar (pendrive)
 ```
 
-> No Windows, rode esses comandos no **PowerShell**. (No Git Bash, prefixe com
-> `MSYS_NO_PATHCONV=1`, senão ele troca o `/tmp/...` por um caminho do Windows.)
+O script:
 
-As cópias são SQL puro (`pg_dump --clean --if-exists`): também servem para levar os dados
-para outro servidor PostgreSQL 16.
+1. Mostra a cópia e pede para digitar `RESTAURAR`.
+2. Faz um **backup do estado atual**. É por ele que se desfaz: o fim da restauração mostra o
+   comando.
+3. Confere a cópia: abre a cifrada (com a senha do `.env`), recusa arquivo que não é backup ou
+   que foi cortado no meio.
+4. Restaura numa transação só. Se der qualquer erro no meio, o banco fica **exatamente como
+   estava**.
+5. Encerra as sessões (todo mundo entra de novo) e sobe o sistema.
 
-### Backup cifrado (recomendado se a cópia sai da oficina)
+Cópia de uma versão anterior do Hermes: o sistema atualiza o banco sozinho ao subir.
 
-A cópia leva **tudo**: clientes, telefones, o caixa. Quem achar o pendrive lê. Para cifrar,
-ponha no `.env` uma senha de 12+ caracteres e reinicie (`up -d`):
+## 6. Atualizar
 
-```ini
-BACKUP_SENHA=uma-frase-longa-que-so-o-dono-sabe
-```
-
-As cópias novas saem como `hermes-...sql.enc` (AES-256). Em **Configurações → Backup**
-aparece "Cópias cifradas".
-
-> **Perdeu a senha, perdeu as cópias.** Não há como abrir sem ela. Guarde-a **fora** do
-> servidor e **longe** do pendrive (gerenciador de senhas do Dono, papel no cofre).
-
-Para restaurar uma cópia cifrada, abra-a primeiro (o container já tem a senha) e siga o
-passo 2 acima com o `.sql` gerado:
+### O Hermes
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T app node dist/abrir-backup.js /app/backups/hermes-2026-09-30_093635.sql.enc > hermes-2026-09-30_093635.sql
+sudo /opt/hermes/ops/atualizar.sh          # mostra a versão instalada e as disponíveis
+sudo /opt/hermes/ops/atualizar.sh v1.0.1   # atualiza
 ```
 
-Cópia baixada que está fora do servidor: copie-a para dentro (`docker compose ... cp
-arquivo.sql.enc app:/tmp/`) e use o mesmo comando apontando para `/tmp/arquivo.sql.enc`.
-Senha errada ou arquivo corrompido: o comando avisa e não gera nada.
+O script:
 
-## 6. Atualizar para uma versão nova
+1. Confere que a versão existe.
+2. Faz um backup.
+3. Baixa a versão nova. Se o download falhar, nada muda.
+4. Troca a versão e espera o sistema responder.
 
-```bash
-# 1. backup na hora (Configurações → Backup → Fazer backup agora) e baixe a cópia
-# 2. pegue a versão nova do código
-git pull
-# 3. reconstrua e suba — as migrações do banco rodam sozinhas na partida
-docker compose -f docker-compose.prod.yml up -d --build
-```
+**Voltar** é o mesmo comando com a versão anterior, por exemplo
+`sudo /opt/hermes/ops/atualizar.sh v1.0.0`. Se os dados ficarem errados depois de voltar, o
+script mostra qual cópia restaurar.
 
-Os usuários só precisam recarregar a tela (no app: **Ctrl+R**).
+Faça fora do horário de atendimento: o sistema fica fora do ar por um ou dois minutos. Depois,
+os aparelhos só recarregam a página.
 
-## 7. Acesso de fora da oficina (opcional)
+### O Linux
 
-O jeito mais seguro de o Dono acessar de casa é uma **VPN** simples (ex.: Tailscale) entre o
-celular/notebook e o servidor — **sem abrir porta no roteador**.
+- **Correções de segurança:** instaladas sozinhas todo dia, **sem reiniciar**.
+- **Uma vez por mês**, fora do horário:
+  1. Abra o **Gerenciador de atualizações** (ícone de escudo no canto da tela), conta
+     `suporte`, e aplique o que houver.
+  2. Reinicie: `sudo reboot`. O kernel novo só entra depois de reiniciar.
 
-Se for publicar na internet mesmo, coloque um proxy com HTTPS na frente (Caddy, Nginx,
-Cloudflare Tunnel) e ajuste no `.env`:
+  O Docker também se atualiza por ali; o sistema fica fora do ar enquanto ele reinicia.
 
-```ini
-TRUST_PROXY=true      # o proxy informa o IP real e o HTTPS
-COOKIE_SECURE=true    # o cookie de sessão só trafega por HTTPS
-```
+## 7. Suporte à distância (Tailscale)
+
+O Tailscale liga o mini PC aos computadores do suporte por uma rede privada, **sem abrir
+nenhuma porta no roteador**.
+
+- Conta: a do suporte, em <https://tailscale.com> (gratuita). O instalador pede para entrar
+  com ela (seção 3, passo 7).
+- No computador do suporte: instale o Tailscale com a mesma conta. Aí o sistema abre em
+  `http://hermes-oficina`, e o terminal em `ssh suporte@hermes-oficina`.
+- Tirar o acesso: painel do Tailscale (<https://login.tailscale.com/admin/machines>) →
+  `hermes-oficina` → *Remove*.
+- O Dono quer abrir de casa? Instale o Tailscale no celular dele e compartilhe a máquina
+  `hermes-oficina` com ele pelo mesmo painel (*Share*).
+
+> **Nunca** abra a porta 80 do roteador para a internet. A 1.0 não tem HTTPS, e senhas iriam
+> abertas pela rede.
 
 ## 8. Problemas comuns
 
 | Sintoma | O que fazer |
 |---|---|
-| Depois que o PC servidor reiniciou, o sistema não abre | O Docker Desktop só sobe depois que alguém entra no Windows. Entre no Windows do servidor e espere 1–2 minutos (o ícone da baleia fica parado quando terminou). Para não depender disso: login automático, seção [1.1](#11-servidor-num-pc-da-própria-oficina-windows). |
-| App mostra "Não foi possível conectar ao servidor" | O servidor está ligado? `docker compose -f docker-compose.prod.yml ps`. O IP mudou? (fixe o IP no roteador). O firewall liberou a 3333? |
-| `app` reiniciando sem parar | `docker compose -f docker-compose.prod.yml logs app` — em geral é `SESSAO_SEGREDO` curto/de exemplo ou `POSTGRES_PASSWORD` diferente da usada na criação do banco. |
-| Celular ou computador perdido com o sistema aberto | O Dono, em **Configurações → Equipe**, clica em "Desconectar de todos os aparelhos" na pessoa. Cada um também vê e encerra os próprios aparelhos em **Configurações → Minha conta**. |
-| Log diz "não consegui preparar o usuário hermes_app" | O banco não é o do `docker-compose` e não deixa criar usuários (banco gerenciado na nuvem). Ponha `DB_USUARIO_APP=false` no `.env`: o sistema passa a usar a conexão informada como está. |
-| Esqueci a senha do Dono | Outro Dono redefine em Configurações → Equipe. Sendo o único Dono, no servidor: `docker compose -f docker-compose.prod.yml exec app node dist/redefinir-senha.js dono@suaoficina.com NovaSenha123` (fica registrado no Histórico). |
-| Backup "atrasado" em Configurações | Veja o log (`logs app`, procure "backup"). Faça um manual em Configurações → Backup. |
-| Mudei o computador servidor | Backup no antigo → instale no novo (passos 1–3) → restaure a cópia (seção 5) → aponte os apps para o IP novo. |
+| Depois de uma queda de luz, nada abre | Espere 2 minutos. O mini PC ligou? Se não, confira a BIOS (seção 1). Ligou e não abre: `sudo docker compose -f /opt/hermes/docker-compose.prod.yml ps` (os dois devem estar *healthy*). |
+| Celular não abre o endereço | Está na Wi-Fi **principal** (não na de visitantes)? O IP do mini PC mudou? Faça a reserva de DHCP (seção 1). |
+| Painel: "O HD externo não está conectado" | Confira o cabo USB. Depois `sudo /opt/hermes/ops/hd-montar.sh` e `findmnt /mnt/hermes-backup` (deve mostrar o HD). |
+| Painel: "Não consegui gravar no HD externo: o HD está cheio" | As cópias são pequenas: alguém pôs outra coisa no HD. Veja com `sudo du -sh /mnt/hermes-backup/*`. |
+| Sistema reiniciando sem parar | `sudo docker compose -f /opt/hermes/docker-compose.prod.yml logs --tail 50 app`. A mensagem diz o que falta. |
+| Esqueci a senha do Dono | Outro Dono redefine em Configurações → Equipe. Sendo o único Dono: `sudo docker compose -f /opt/hermes/docker-compose.prod.yml exec app node dist/redefinir-senha.js dono@suaoficina.com NovaSenha123` (fica no Histórico). |
+| Celular perdido com o sistema aberto | O Dono, em **Configurações → Equipe**, clica em "Desconectar de todos os aparelhos" na pessoa. Cada um também encerra os próprios aparelhos em **Configurações → Minha conta**. |
+| Trocar o mini PC | Faça um backup no antigo. No novo, siga as seções 1 a 3 com o **mesmo HD** (o instalador o aproveita sem formatar). Depois `sudo /opt/hermes/ops/restaurar.sh` e escolha a cópia mais nova. Reserve o mesmo IP no roteador. |
 
-Saúde do sistema (para monitoramento): `GET http://<servidor>:3333/api/health`.
+Saúde do sistema: `curl http://localhost/api/health` (responde `"status":"ok"`).
+
+## Onde fica cada coisa
+
+| O quê | Onde |
+|---|---|
+| Sistema (scripts, `docker-compose.prod.yml`) | `/opt/hermes`, parado na versão instalada |
+| Senhas e configuração | `/opt/hermes/.env`, só o root lê. **Nunca vai para o git.** Guarde uma cópia fora do mini PC se ligar a cifra. |
+| Backups no SSD | `/srv/hermes/backups` |
+| Backups no HD externo | `/mnt/hermes-backup`, montado pelo UUID do HD |
+| Banco de dados | Volume Docker `hermes_dados` |
+
+| Para | Comando (Terminal, conta `suporte`) |
+|---|---|
+| Ver se está tudo de pé | `sudo docker compose -f /opt/hermes/docker-compose.prod.yml ps` |
+| Ver o log | `sudo docker compose -f /opt/hermes/docker-compose.prod.yml logs --tail 100 app` |
+| Backup agora | `sudo /opt/hermes/ops/backup-agora.sh` |
+| Restaurar | `sudo /opt/hermes/ops/restaurar.sh` |
+| Atualizar ou voltar de versão | `sudo /opt/hermes/ops/atualizar.sh <versão>` |
+| Conferir a instalação | `sudo /opt/hermes/ops/instalar.sh` (só confere o que já está feito) |

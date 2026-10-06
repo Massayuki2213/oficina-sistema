@@ -200,6 +200,8 @@ Esse fluxo é o que você vai **demonstrar** para a oficina: em menos de 1 minut
 | **Relatórios/gráficos** | **Recharts** | Gráficos de faturamento, lucro, despesas. |
 
 > **Alternativa mais leve:** trocar Electron por **Tauri** (app menor e mais rápido). Recomendo começar com Electron pela facilidade e migrar depois, se necessário.
+>
+> **Como ficou na 1.0:** sem app de desktop. A tela abre no navegador de qualquer aparelho, servida por um mini PC com Linux, e o Electron ficou congelado (seção 7.4, ADR 0012).
 
 ### 7.2 Como os PCs conversam
 
@@ -226,7 +228,8 @@ Cada PC tem o app instalado; todos leem/gravam no mesmo banco. Ninguém trabalha
 | Camada | Escolha final | Por quê (ver `docs/adr/`) |
 |---|---|---|
 | Tela | React 18 + Vite + Tailwind + TanStack Query | Servida pela própria API: um endereço para PC, tablet e celular (ADR 0004) |
-| App Windows | Electron como **janela** para o servidor | Atualizou o servidor, atualizou todo mundo (ADR 0004) |
+| Acesso | Só navegador (balcão, celular, tablet); app Electron congelado | Nada para instalar nos aparelhos; atualizou o servidor, atualizou todo mundo (ADR 0004, 0012) |
+| Servidor | Mini PC com Linux Mint + Docker Engine; scripts em `ops/` | Liga sozinho, backup no SSD e num HD externo, suporte pelo Tailscale (ADR 0012) |
 | Contrato | `packages/shared`: zod + DTOs + permissões + dinheiro | Servidor e tela não divergem (ADR 0001) |
 | API | Fastify 5 + Prisma 6 + PostgreSQL 16 | Regras no servidor, kardex e travas de linha (ADR 0003) |
 | Sessão | Cookie httpOnly, perfil lido do banco | Desativar funcionário vale na hora (ADR 0002) |
@@ -319,9 +322,10 @@ Todas as fases de 1 a 6 e a maior parte da 7 foram entregues. O que entrou, em d
   compras, relatórios de lucro real, **comissão por mecânico**.
 - **Venda de balcão**, **WhatsApp** (orçamento, carro pronto, cobrança, retorno, lembrete),
   impressão com logo, **Ajuda** (RN-21).
-- **Produção**: imagem Docker, app instalável para Windows, backup diário com download,
-  histórico de ações, recuperação de senha pela linha de comando.
-- **Qualidade**: 272 testes automatizados (a API contra PostgreSQL real), lint, CI.
+- **Produção**: mini PC com Linux Mint, imagem publicada a cada versão, scripts para instalar,
+  atualizar e restaurar, backup diário no SSD e num HD externo (com aviso ao Dono), histórico de
+  ações, recuperação de senha pela linha de comando.
+- **Qualidade**: 295 testes automatizados (a API contra PostgreSQL real), lint, CI.
 
 ### 11.2 Onde estamos
 

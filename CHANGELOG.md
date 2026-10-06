@@ -38,12 +38,22 @@ revisado de ponta a ponta: contrato único entre servidor e tela, regras de dinh
   sem senha, validade, garantia), equipe e comissão, troca de senha, backup com download.
 - **Histórico (auditoria)** de todas as ações, com filtros por período, área e pessoa.
 - **Busca por placa** em qualquer tela (F2 / Ctrl+K) e **Ajuda** com perguntas frequentes.
-- **App de desktop para Windows** (instalador NSIS): janela para o servidor da oficina.
-- **Produção**: imagem Docker (API + tela + `pg_dump` 16), `docker-compose.prod.yml`, migrações
-  na partida, verificação de saúde, comando de recuperação de senha.
-- **Qualidade**: 272 testes automatizados (231 da API contra PostgreSQL real), ESLint 10, CI no
-  GitHub Actions com build da imagem.
-- Documentação: instalação na oficina, guia de desenvolvimento e decisões de arquitetura (ADR).
+- **Produção num mini PC com Linux Mint** (ADR 0012):
+  - imagem Docker (API + tela + `pg_dump` 16) publicada no ghcr.io a cada versão;
+  - `docker-compose.prod.yml` na porta 80, no fuso de São Paulo e com limite de log;
+  - migrações na partida, verificação de saúde, comando de recuperação de senha.
+- **Scripts do mini PC** (`ops/`):
+  - instalar: Docker, HD externo, atualizações de segurança, Tailscale;
+  - atualizar e voltar de versão;
+  - fazer backup;
+  - restaurar numa transação só, com backup do estado atual antes.
+- **Backup no HD externo**: segunda cópia (60 dias) além da do SSD (14 dias). O painel do Dono
+  avisa quando a cópia atrasa, o HD sai ou a gravação falha. Cópia na nuvem com o rclone,
+  opcional e só cifrada.
+- **Qualidade**: 295 testes automatizados (254 da API contra PostgreSQL real), ESLint 10, CI no
+  GitHub Actions com build e publicação da imagem.
+- Documentação: instalação no mini PC, ensaio numa VM, guia de desenvolvimento e decisões de
+  arquitetura (ADR).
 
 ### Alterado
 
@@ -52,7 +62,11 @@ revisado de ponta a ponta: contrato único entre servidor e tela, regras de dinh
 - Sessão em cookie httpOnly, guardada no banco; perfil lido a cada requisição (desativar derruba na hora).
 - Listas paginadas e busca no servidor; seleção de cliente, peça e serviço por autocompletar.
 - A API serve a tela: um endereço só para todos os aparelhos da rede.
-- Datas no fuso da oficina (`TZ`), não no do servidor.
+- **Só navegador**: o balcão, celulares e tablets abrem o mesmo endereço. O app de desktop
+  (Electron) ficou congelado no repositório, fora da entrega (ADR 0012).
+- Telas do mecânico usáveis no celular (380 px): lista de OS, OS aberta e painel.
+- Datas no fuso da oficina (`TZ`), não no do servidor. O banco também roda no fuso de São
+  Paulo: um lançamento às 22:30 conta no dia certo.
 
 ### Corrigido
 
@@ -96,6 +110,7 @@ revisado de ponta a ponta: contrato único entre servidor e tela, regras de dinh
   repete com a mesma chave e o servidor devolve a resposta da primeira.
 - **Backup cifrado** opcional (`BACKUP_SENHA`, AES-256-GCM) e comando para abrir a cópia.
 - Transações com folga de 15 s (antes 5 s): PC modesto não derruba venda no meio.
+- Primeiro acesso travado depois que existe um Dono, inclusive com três tentativas ao mesmo tempo.
 
 ## [0.1.0] — 2026-07
 
