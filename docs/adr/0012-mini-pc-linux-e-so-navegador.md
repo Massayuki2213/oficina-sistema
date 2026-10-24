@@ -1,7 +1,7 @@
 # 0012 — Mini PC com Linux Mint; acesso só pelo navegador
 
 **Situação:** aceita (v1.0). Substitui a parte da [0004](0004-api-serve-a-tela-e-desktop-e-janela.md)
-sobre o app de desktop.
+sobre o app de desktop. O mini PC foi substituído por um servidor na nuvem: [0013](0013-servidor-na-nuvem.md).
 
 ## Contexto
 

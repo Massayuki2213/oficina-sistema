@@ -17,4 +17,5 @@ não reescreva a história.
 | [0009](0009-sessao-opaca-no-banco.md) | Sessão opaca guardada no banco (sai o JWT) | Aceita |
 | [0010](0010-concorrencia-otimista.md) | Concorrência otimista nos formulários (`versao`, 409) | Aceita |
 | [0011](0011-idempotencia-dos-post.md) | Idempotência dos POST: repetição não lança duas vezes | Aceita |
-| [0012](0012-mini-pc-linux-e-so-navegador.md) | Mini PC com Linux Mint; acesso só pelo navegador | Aceita |
+| [0012](0012-mini-pc-linux-e-so-navegador.md) | Mini PC com Linux Mint; acesso só pelo navegador | Aceita (mini PC substituído pela 0013) |
+| [0013](0013-servidor-na-nuvem.md) | Servidor na nuvem (VPS), com HTTPS e o Dono criado pelo terminal | Aceita |
