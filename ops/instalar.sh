@@ -63,8 +63,23 @@ ler_opcoes() {
   fi
 }
 
+# Num servidor recém-criado, as atualizações automáticas do Ubuntu rodam logo de
+# cara e seguram o apt por alguns minutos: espera a vez (até 10 min) em vez de falhar.
+APT_ESPERA=(-o DPkg::Lock::Timeout=600)
+
 apt_instalar() {
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -q "$@" >/dev/null
+  DEBIAN_FRONTEND=noninteractive apt-get "${APT_ESPERA[@]}" install -y -q "$@" >/dev/null
+}
+
+# A lista de pacotes tem trava própria: tenta de novo enquanto outra atualização roda.
+apt_atualizar_lista() {
+  local tentativa
+  for tentativa in $(seq 1 60); do
+    apt-get "${APT_ESPERA[@]}" update -q >/dev/null 2>&1 && return 0
+    [ "$tentativa" -eq 1 ] && info "Esperando outra atualização do sistema terminar..."
+    sleep 10
+  done
+  return 1
 }
 
 # ---- 1 -----------------------------------------------------------------------------
@@ -76,7 +91,7 @@ conferir_computador() {
   [ "$UBUNTU_CODENAME" = noble ] ||
     aviso "Feito para o Ubuntu 24.04 / Linux Mint 22 ('noble'); este é '$UBUNTU_CODENAME'. Seguindo mesmo assim."
   [ "$(uname -m)" = x86_64 ] || erro "Precisa de um computador 64 bits (x86_64); este é $(uname -m)."
-  apt-get update -q >/dev/null || erro "Sem internet (o apt não conseguiu atualizar a lista de pacotes)."
+  apt_atualizar_lista || erro "Sem internet (o apt não conseguiu atualizar a lista de pacotes)."
   apt_instalar ca-certificates curl git openssl
   curl -fsS -m 10 -o /dev/null https://download.docker.com || erro "Sem acesso a download.docker.com (internet ou firewall)."
 
@@ -110,14 +125,14 @@ instalar_docker() {
     # Pacotes antigos/alternativos brigam com o Docker oficial.
     local p
     for p in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
-      if dpkg -s "$p" >/dev/null 2>&1; then apt-get remove -y -q "$p" >/dev/null; fi
+      if dpkg -s "$p" >/dev/null 2>&1; then apt-get "${APT_ESPERA[@]}" remove -y -q "$p" >/dev/null; fi
     done
     install -m 0755 -d /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
     chmod a+r /etc/apt/keyrings/docker.asc
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $UBUNTU_CODENAME stable" \
       >/etc/apt/sources.list.d/docker.list
-    apt-get update -q >/dev/null
+    apt_atualizar_lista
     apt_instalar docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     ok "Instalado: $(docker --version)"
   fi
@@ -415,7 +430,7 @@ configurar_tailscale() {
   if ! command -v tailscale >/dev/null; then
     curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/$UBUNTU_CODENAME.noarmor.gpg" -o /usr/share/keyrings/tailscale-archive-keyring.gpg
     curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/$UBUNTU_CODENAME.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list
-    apt-get update -q >/dev/null
+    apt_atualizar_lista
     apt_instalar tailscale
   fi
   systemctl enable --now --quiet tailscaled

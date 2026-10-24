@@ -42,7 +42,7 @@ ativar() {
   precisa_cifra
   if ! command -v rclone >/dev/null; then
     passo "Instalando o rclone"
-    apt-get install -y -q rclone
+    DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -q rclone
   fi
   rclone listremotes | grep -qx "${dest%%:*}:" ||
     erro "O remoto '${dest%%:*}' não existe. Crie com: sudo rclone config"
