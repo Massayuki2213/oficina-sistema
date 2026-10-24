@@ -47,6 +47,12 @@ const schema = z
     COOKIE_SECURE: z.enum(['auto', 'true', 'false']).default('auto'),
     /** Atrás de proxy reverso (Caddy, Nginx, nuvem): confiar no X-Forwarded-*. */
     TRUST_PROXY: booleano('false'),
+    /**
+     * Primeiro acesso pela tela (cria o Dono com o banco vazio). Num servidor na
+     * internet fica desligado: o Dono é criado pelo terminal (ops/criar-dono.sh),
+     * senão quem abrisse o endereço primeiro viraria dono do sistema.
+     */
+    PRIMEIRO_ACESSO_WEB: booleano('true'),
 
     /**
      * Fuso da oficina. As "datas do dia" (caixa de hoje, relatório do mês)

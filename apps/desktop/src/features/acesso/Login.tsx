@@ -44,6 +44,11 @@ export default function Login() {
 
         <h2 className="text-base font-bold mt-6">Entrar</h2>
         <p className="text-[13px] text-grafite/50 mb-4">Acesse com seu usuário da oficina.</p>
+        {situacao?.configurarPeloTerminal && (
+          <div role="status" className="text-[13px] bg-amarelo-bg text-amarelo font-semibold rounded-xl px-3.5 py-2.5">
+            Este servidor ainda não tem nenhum usuário. Quem cuida do sistema cria o primeiro (o Dono) pelo terminal do servidor.
+          </div>
+        )}
 
         <label className="block">
           <span className="block text-xs font-bold text-grafite/50 uppercase tracking-wide mt-3.5 mb-1.5">E-mail</span>

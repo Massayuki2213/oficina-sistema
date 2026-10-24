@@ -62,6 +62,11 @@ export interface SituacaoSistema {
   versao: string;
   /** Nenhum usuário ainda: mostrar o "primeiro acesso". */
   precisaConfigurar: boolean;
+  /**
+   * Nenhum usuário, mas este servidor está na internet e o primeiro acesso
+   * pela tela está desligado: o Dono é criado pelo terminal (ops/criar-dono.sh).
+   */
+  configurarPeloTerminal: boolean;
   oficina: { nome: string; logo: string | null };
 }
 

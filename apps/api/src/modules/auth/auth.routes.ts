@@ -2,6 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { SessaoDTO } from '@hermes/shared';
 import { idParams, loginSchema, primeiroAcessoSchema } from '@hermes/shared/schemas';
 import { registrarLogin } from '../../lib/auditoria.js';
+import { env } from '../../lib/env.js';
 import { AppError, COD, naoEncontrado } from '../../lib/errors.js';
 import { encerrarDoUsuario, encerrarUma, listarDoUsuario } from '../../lib/sessoes.js';
 import { emMinutos, limparFalhas, registrarFalha, segundosDeBloqueio } from '../../lib/tentativas.js';
@@ -46,6 +47,10 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
     '/primeiro-acesso',
     { schema: { tags, body: primeiroAcessoSchema }, config: { ...publica, acao: 'PRIMEIRO_ACESSO' } },
     async (req, reply) => {
+      // Servidor na internet: o Dono nasce pelo terminal, nunca por quem abrir o endereço primeiro.
+      if (!env.PRIMEIRO_ACESSO_WEB) {
+        throw new AppError(403, 'Neste servidor, o Dono é criado pelo terminal (ops/criar-dono.sh).', COD.SEM_PERMISSAO);
+      }
       barrarSeBloqueado(req.ip, 'primeiro-acesso');
       try {
         const dono = await service.primeiroAcesso(req.body);

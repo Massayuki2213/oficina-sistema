@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import type { primeiroAcessoSchema } from '@hermes/shared/schemas';
 import { VERSAO, type SituacaoSistema } from '@hermes/shared';
 import { prisma } from '../../lib/prisma.js';
+import { env } from '../../lib/env.js';
 import { conflito, COD } from '../../lib/errors.js';
 
 /** Custo do bcrypt: 10 é o mínimo recomendado (OWASP) e fica ~100 ms por login. */
@@ -50,9 +51,11 @@ export async function situacao(): Promise<SituacaoSistema> {
     prisma.usuario.count(),
     prisma.oficina.findUnique({ where: { id: 'unica' }, select: { nome: true, logo: true } }),
   ]);
+  const vazio = usuarios === 0;
   return {
     versao: VERSAO,
-    precisaConfigurar: usuarios === 0,
+    precisaConfigurar: vazio && env.PRIMEIRO_ACESSO_WEB,
+    configurarPeloTerminal: vazio && !env.PRIMEIRO_ACESSO_WEB,
     oficina: { nome: oficina?.nome ?? 'Hermes', logo: oficina?.logo ?? null },
   };
 }

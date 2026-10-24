@@ -471,6 +471,30 @@ describe('primeiro acesso', () => {
     await db.usuario.deleteMany();
     a = await atores();
   });
+
+  it('servidor na internet (PRIMEIRO_ACESSO_WEB=false): a tela não oferece e a API recusa', async () => {
+    await db.usuario.deleteMany();
+    env.PRIMEIRO_ACESSO_WEB = false;
+    try {
+      const situacao = (await get('/api/auth/situacao', '')).json();
+      expect(situacao).toMatchObject({ precisaConfigurar: false, configurarPeloTerminal: true });
+
+      const r = await app.inject({ method: 'POST', url: '/api/auth/primeiro-acesso', payload: novoDono('robo@x.com') });
+      expect(r.statusCode).toBe(403);
+      expect(r.json().message).toMatch(/terminal/);
+      expect(await db.usuario.count()).toBe(0);
+    } finally {
+      env.PRIMEIRO_ACESSO_WEB = true;
+      a = await atores();
+    }
+    // Com o Dono criado (pelo terminal), o aviso some.
+    env.PRIMEIRO_ACESSO_WEB = false;
+    try {
+      expect((await get('/api/auth/situacao', '')).json()).toMatchObject({ precisaConfigurar: false, configurarPeloTerminal: false });
+    } finally {
+      env.PRIMEIRO_ACESSO_WEB = true;
+    }
+  });
 });
 
 describe('limite de tentativas no login', () => {

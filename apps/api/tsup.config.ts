@@ -5,7 +5,8 @@ import { defineConfig } from 'tsup';
 //  - dist/redefinir-senha.js   recuperação de acesso pela linha de comando;
 //  - dist/usuario-do-banco.js  prepara o usuário do banco da aplicação na partida do container;
 //  - dist/abrir-backup.js      abre uma cópia cifrada (.sql.enc) para restaurar;
-//  - dist/fazer-backup.js      faz um backup agora (scripts de ops/: antes de atualizar ou restaurar).
+//  - dist/fazer-backup.js      faz um backup agora (scripts de ops/: antes de atualizar ou restaurar);
+//  - dist/criar-dono.js        cria o Dono pelo terminal (servidor na internet, ops/criar-dono.sh).
 // O contrato compartilhado (@hermes/shared) é TypeScript puro e entra DENTRO
 // do pacote — o Node não carrega .ts de node_modules. O resto das
 // dependências (fastify, prisma...) continua sendo lido de node_modules.
@@ -16,6 +17,7 @@ export default defineConfig({
     'usuario-do-banco': 'src/cli/usuario-do-banco.ts',
     'abrir-backup': 'src/cli/abrir-backup.ts',
     'fazer-backup': 'src/cli/fazer-backup.ts',
+    'criar-dono': 'src/cli/criar-dono.ts',
   },
   format: ['esm'],
   platform: 'node',
