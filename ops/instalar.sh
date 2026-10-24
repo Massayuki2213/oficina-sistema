@@ -1,28 +1,35 @@
 #!/usr/bin/env bash
 # ==========================================================
-# Hermes — instala o servidor no mini PC (Linux Mint 22). Pode rodar de
-# novo quantas vezes quiser: o que já está feito, ele só confere.
+# Hermes — instala o servidor: num servidor na nuvem (Ubuntu 24.04) ou num
+# mini PC da oficina (Linux Mint 22). Pode rodar de novo quantas vezes
+# quiser: o que já está feito, ele só confere.
 #
 #   sudo apt install -y git
 #   sudo git clone --branch v1.0.0 https://github.com/Massayuki2213/oficina-sistema.git /opt/hermes
-#   sudo /opt/hermes/ops/instalar.sh
+#   sudo /opt/hermes/ops/instalar.sh --nuvem --dominio sistema.oficina.com.br   # na nuvem
+#   sudo /opt/hermes/ops/instalar.sh                                            # mini PC
 #
 # Opções:
+#   --nuvem           servidor na internet: HTTPS no domínio, firewall, SSH só
+#                     com chave, cópias cifradas, Dono criado pelo terminal
+#                     (ops/criar-dono.sh). Já inclui --sem-hd e --sem-tailscale.
+#   --dominio X       endereço do sistema na nuvem (padrão: o nome do servidor)
 #   --versao v1.0.0   versão da imagem (padrão: a versão do clone, git checkout)
 #   --sem-hd          sem HD externo de backup (o sistema não cobra o HD)
 #   --sem-tailscale   sem o suporte à distância
 #
 # O que faz:
-#   1. confere o computador (Mint/Ubuntu 24.04, 64 bits, internet);
+#   1. confere o computador (Ubuntu 24.04 ou Mint 22, 64 bits, internet);
 #   2. fuso de São Paulo, relógio pela internet, nunca suspender;
 #   3. instala o Docker (serviço que sobe no boot);
 #   4. cria as pastas e o .env com senhas aleatórias (só na primeira vez);
-#   5. HD externo: formata (só com confirmação), monta pelo UUID e cria o
-#      arquivo-marca; um timer remonta o HD se ele for plugado depois;
-#   6. atualizações de segurança automáticas, sem reiniciar sozinho;
-#   7. Tailscale (pede para entrar na conta pelo navegador);
-#   8. baixa a imagem e sobe o Hermes;
-#   9. mostra o endereço para o primeiro acesso.
+#   5. HD externo (mini PC): formata (só com confirmação), monta pelo UUID e
+#      cria o arquivo-marca; um timer remonta o HD se ele for plugado depois;
+#   6. segurança: atualizações automáticas, sem reiniciar sozinho; na nuvem,
+#      firewall, SSH só com chave e bloqueio de quem erra senha em série;
+#   7. Tailscale (mini PC; pede para entrar na conta pelo navegador);
+#   8. baixa a imagem e sobe o Hermes (na nuvem, com o certificado HTTPS);
+#   9. mostra o endereço e o próximo passo.
 # ==========================================================
 set -euo pipefail
 source "$(dirname "$0")/comum.sh"
@@ -30,6 +37,8 @@ source "$(dirname "$0")/comum.sh"
 VERSAO=''
 SEM_HD=0
 SEM_TAILSCALE=0
+NUVEM=0
+DOMINIO=''
 UBUNTU_CODENAME=''
 
 ler_opcoes() {
@@ -38,9 +47,20 @@ ler_opcoes() {
       --versao) VERSAO=${2:-}; shift 2 ;;
       --sem-hd) SEM_HD=1; shift ;;
       --sem-tailscale) SEM_TAILSCALE=1; shift ;;
+      --nuvem) NUVEM=1; SEM_HD=1; SEM_TAILSCALE=1; shift ;;
+      --dominio) DOMINIO=${2:-}; shift 2 ;;
       *) erro "Opção desconhecida: $1 (veja o começo de $0)" ;;
     esac
   done
+  # Na nuvem sem --dominio: o nome que o provedor deu ao servidor (ex.: srv123.hstgr.cloud).
+  if [ "$NUVEM" = 1 ] && [ -z "$DOMINIO" ]; then
+    DOMINIO=$(ler_env HERMES_DOMINIO)
+    case "$DOMINIO" in '' | :*) DOMINIO=$(hostname -f 2>/dev/null || hostname) ;; esac
+  fi
+  if [ "$NUVEM" = 1 ]; then
+    [[ $DOMINIO == *.* && $DOMINIO != *[[:space:]/:]* ]] ||
+      erro "Domínio inválido: '$DOMINIO'. Passe o endereço completo, ex.: --dominio sistema.oficina.com.br"
+  fi
 }
 
 apt_instalar() {
@@ -54,7 +74,7 @@ conferir_computador() {
   # shellcheck disable=SC1091
   UBUNTU_CODENAME=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}")
   [ "$UBUNTU_CODENAME" = noble ] ||
-    aviso "Feito para o Linux Mint 22 (base Ubuntu 24.04 'noble'); este é '$UBUNTU_CODENAME'. Seguindo mesmo assim."
+    aviso "Feito para o Ubuntu 24.04 / Linux Mint 22 ('noble'); este é '$UBUNTU_CODENAME'. Seguindo mesmo assim."
   [ "$(uname -m)" = x86_64 ] || erro "Precisa de um computador 64 bits (x86_64); este é $(uname -m)."
   apt-get update -q >/dev/null || erro "Sem internet (o apt não conseguiu atualizar a lista de pacotes)."
   apt_instalar ca-certificates curl git openssl
@@ -111,27 +131,44 @@ pastas_e_env() {
   if [ -f "$ENV_ARQ" ]; then
     # Nunca gera senha nova por cima: o banco já foi criado com a antiga.
     gravar_env HERMES_VERSAO "$VERSAO"
+    if [ "$NUVEM" = 1 ]; then
+      gravar_env HERMES_DOMINIO "$DOMINIO"
+      gravar_env PRIMEIRO_ACESSO_WEB false
+      [ -n "$(ler_env BACKUP_SENHA)" ] || gravar_env BACKUP_SENHA "$(openssl rand -hex 24)"
+    fi
     ok ".env já existia: senhas mantidas, versão $VERSAO"
   else
+    # Na nuvem: o endereço é o domínio (HTTPS), o Dono nasce pelo terminal e
+    # as cópias saem cifradas desde a primeira (elas vão para fora do servidor).
+    local dominio=':80' primeiro_acesso_web=true senha_copias='# BACKUP_SENHA='
+    if [ "$NUVEM" = 1 ]; then
+      dominio=$DOMINIO
+      primeiro_acesso_web=false
+      senha_copias="BACKUP_SENHA=$(openssl rand -hex 24)"
+    fi
     (
       umask 077
       cat >"$ENV_ARQ" <<EOF
-# Hermes — configuração deste mini PC. Criado pelo ops/instalar.sh em $(date '+%d/%m/%Y %H:%M').
+# Hermes — configuração deste servidor. Criado pelo ops/instalar.sh em $(date '+%d/%m/%Y %H:%M').
 # Versão do sistema: troque com sudo $HERMES_DIR/ops/atualizar.sh <versão>
 HERMES_VERSAO=$VERSAO
 # Senhas sorteadas na instalação. Não mude depois que o banco existir.
 POSTGRES_PASSWORD=$(openssl rand -hex 24)
 SESSAO_SEGREDO=$(openssl rand -hex 32)
 TZ=America/Sao_Paulo
+# Endereço: um domínio (HTTPS automático) ou :80 (http na rede da oficina).
+HERMES_DOMINIO=$dominio
 HERMES_PORT=80
+# false num servidor na internet: o Dono é criado pelo terminal (ops/criar-dono.sh).
+PRIMEIRO_ACESSO_WEB=$primeiro_acesso_web
 HERMES_BACKUPS=/srv/hermes/backups
 HERMES_HD_EXTERNO=/mnt/hermes-backup
 BACKUP_RETENCAO_DIAS=14
 BACKUP_RETENCAO_DIAS_EXTERNO=60
-# Cifra das cópias. OBRIGATÓRIA se o HD externo ou as cópias saírem da oficina.
-# PERDEU A SENHA, PERDEU AS CÓPIAS: guarde-a fora deste computador.
+# Cifra das cópias. OBRIGATÓRIA se as cópias saírem do servidor (HD levado, nuvem).
+# PERDEU A SENHA, PERDEU AS CÓPIAS: guarde-a fora deste servidor.
 # Depois de mudar: sudo docker compose -f $COMPOSE_ARQ up -d
-# BACKUP_SENHA=
+$senha_copias
 EOF
     )
     ok ".env criado com senhas aleatórias"
@@ -300,7 +337,7 @@ configurar_hd() {
 
 # ---- 6 -----------------------------------------------------------------------------
 atualizacoes_de_seguranca() {
-  passo "6/9 Atualizações de segurança automáticas"
+  passo "6/9 Segurança do servidor"
   apt_instalar unattended-upgrades
   # O Mint se apresenta com outro nome: a origem de segurança do Ubuntu vai escrita por extenso.
   cat >/etc/apt/apt.conf.d/52hermes-atualizacoes <<EOF
@@ -316,7 +353,56 @@ Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
 EOF
   systemctl unmask --quiet apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
   systemctl enable --now --quiet apt-daily.timer apt-daily-upgrade.timer
-  ok "Ligadas (sem reinício automático: o kernel novo entra quando o PC for reiniciado)"
+  ok "Atualizações de segurança automáticas (sem reinício: o kernel novo entra quando o servidor reiniciar)"
+  [ "$NUVEM" = 1 ] || return 0
+  proteger_firewall
+  proteger_ssh
+}
+
+# Na internet, só o SSH e o site ficam abertos. (O Docker publica as portas
+# por fora do ufw: por isso só o Caddy publica alguma, e o banco nenhuma.)
+proteger_firewall() {
+  apt_instalar ufw
+  ufw default deny incoming >/dev/null
+  ufw default allow outgoing >/dev/null
+  ufw allow OpenSSH >/dev/null
+  ufw allow 80/tcp >/dev/null
+  ufw allow 443/tcp >/dev/null
+  ufw allow 443/udp >/dev/null
+  ufw --force enable >/dev/null
+  ok "Firewall: abertos só o SSH (22) e o site (80 e 443)"
+}
+
+# SSH só com chave. Só desliga a senha se já houver chave cadastrada:
+# senão ninguém entraria mais no servidor.
+proteger_ssh() {
+  apt_instalar fail2ban
+  systemctl enable --now --quiet fail2ban
+  ok "Quem erra a senha do SSH em série fica bloqueado (fail2ban)"
+
+  local chaves=0 arq
+  for arq in /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys; do
+    [ -s "$arq" ] && chaves=1
+  done
+  if [ "$chaves" = 0 ]; then
+    aviso "Nenhuma chave SSH cadastrada: o login por senha continua ligado. Cadastre uma chave e rode o instalador de novo."
+    return
+  fi
+  # Os arquivos de sshd_config.d são lidos antes do principal, e no SSH vale o
+  # primeiro valor lido: 10- vem antes do 50-cloud-init dos provedores.
+  cat >/etc/ssh/sshd_config.d/10-hermes.conf <<'EOF'
+# Hermes (ops/instalar.sh --nuvem): SSH só com chave, nunca com senha.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+EOF
+  if sshd -t 2>/dev/null; then
+    systemctl reload ssh 2>/dev/null || systemctl restart ssh 2>/dev/null || true
+    ok "SSH só com chave (login por senha desligado)"
+  else
+    rm -f /etc/ssh/sshd_config.d/10-hermes.conf
+    aviso "A configuração do SSH não passou no teste: mantive a de antes."
+  fi
 }
 
 # ---- 7 -----------------------------------------------------------------------------
@@ -356,15 +442,40 @@ subir_hermes() {
     erro "O Hermes não respondeu (log acima)."
   }
   ok "No ar"
-  local porta
-  porta=$(ler_env HERMES_PORT)
-  curl -fsS -m 5 -o /dev/null "http://127.0.0.1:${porta:-80}/api/health" ||
-    aviso "O sistema está no ar, mas não respondeu em http://127.0.0.1:${porta:-80} (porta ocupada?)."
+  if [ "$NUVEM" = 1 ]; then
+    # O primeiro certificado leva alguns segundos para sair.
+    local passou=0
+    until curl -fsS -m 10 -o /dev/null "https://$DOMINIO/api/health" 2>/dev/null; do
+      if [ "$passou" -ge 120 ]; then
+        dc logs --tail 20 caddy </dev/null || true
+        aviso "Não respondeu em https://$DOMINIO ainda. O domínio aponta para o IP deste servidor? (log do Caddy acima)"
+        return 0
+      fi
+      sleep 5
+      passou=$((passou + 5))
+    done
+    ok "Respondendo em https://$DOMINIO (certificado HTTPS válido)"
+  else
+    local porta
+    porta=$(ler_env HERMES_PORT)
+    curl -fsS -m 5 -o /dev/null "http://127.0.0.1:${porta:-80}/api/health" ||
+      aviso "O sistema está no ar, mas não respondeu em http://127.0.0.1:${porta:-80} (porta ocupada?)."
+  fi
 }
 
 # ---- 9 -----------------------------------------------------------------------------
 resumo() {
   passo "9/9 Pronto"
+  if [ "$NUVEM" = 1 ]; then
+    info "Endereço do sistema:  https://$DOMINIO"
+    info ""
+    info "Próximo passo — criar o Dono (o primeiro usuário), num terminal seu:"
+    info "    sudo $HERMES_DIR/ops/criar-dono.sh"
+    info "A senha das cópias de backup está no .env. Anote-a FORA do servidor"
+    info "(perdeu a senha, perdeu as cópias):  sudo grep BACKUP_SENHA $ENV_ARQ"
+    info "Atualizar: sudo $HERMES_DIR/ops/atualizar.sh <versão>"
+    return
+  fi
   local ip ts
   ip=$(ip_da_rede)
   ts=$(tailscale ip -4 2>/dev/null | head -n 1 || true)

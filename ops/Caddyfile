@@ -1,0 +1,24 @@
+# ==========================================================
+# Hermes — a porta de entrada (Caddy), usada pelo docker-compose.prod.yml.
+#
+# HERMES_DOMINIO (no .env):
+#   - um domínio (ex.: sistema.oficina.com.br): HTTPS automático, com o
+#     certificado pedido e renovado sozinho; o http vira https;
+#   - ":80" (o padrão): http simples, para a rede da oficina sem domínio.
+# ==========================================================
+
+{$HERMES_DOMINIO} {
+	encode zstd gzip
+
+	# O sistema (API + tela) fica na rede interna do Docker.
+	reverse_proxy app:3333
+
+	header {
+		# Só vale em HTTPS: o navegador passa a recusar a versão http do endereço.
+		Strict-Transport-Security "max-age=31536000"
+		# Não anuncia qual servidor é.
+		-Server
+	}
+	# Sem log de cada acesso: os endereços levariam buscas com nome de
+	# cliente e placa. Erros do Caddy continuam no log do container.
+}

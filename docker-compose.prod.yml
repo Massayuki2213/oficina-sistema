@@ -60,8 +60,13 @@ services:
       SESSAO_SEGREDO: ${SESSAO_SEGREDO:?Defina SESSAO_SEGREDO no .env (openssl rand -hex 32)}
       SESSAO_DURACAO: ${SESSAO_DURACAO:-12h}
       TZ: ${TZ:-America/Sao_Paulo}
+      # O sistema só é alcançado pelo Caddy (abaixo): ele informa o IP de quem
+      # acessa (o freio de login conta por pessoa) e se a conexão é HTTPS
+      # (o cookie de sessão só trafega cifrado quando é).
       COOKIE_SECURE: ${COOKIE_SECURE:-auto}
-      TRUST_PROXY: ${TRUST_PROXY:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      # Servidor na internet: false, e o Dono nasce pelo terminal (ops/criar-dono.sh).
+      PRIMEIRO_ACESSO_WEB: ${PRIMEIRO_ACESSO_WEB:-true}
       BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
       BACKUP_RETENCAO_DIAS: ${BACKUP_RETENCAO_DIAS:-14}
       # Segunda cópia no HD externo (montado abaixo). BACKUP_DIR_EXTERNO= vazio
@@ -72,10 +77,8 @@ services:
       # Obrigatório se o HD externo sair da oficina (guardado em casa, por exemplo).
       BACKUP_SENHA: ${BACKUP_SENHA:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-    ports:
-      # A porta 80 é só do lado do mini PC (endereço http://<ip>); dentro do
-      # container a API segue na 3333.
-      - "${HERMES_PORT:-80}:3333"
+    # Sem porta publicada: quem fala com a internet (ou com a rede da oficina)
+    # é o Caddy. Dentro do Docker, o sistema segue na 3333.
     volumes:
       # Cópias de backup numa pasta do mini PC (SSD): os scripts de ops/ e o
       # rclone leem daqui. Dono da pasta: uid 1000 (o usuário da imagem).
@@ -97,5 +100,28 @@ services:
       start_period: 60s
     <<: *logs
 
+  # A porta de entrada. Com um domínio em HERMES_DOMINIO (servidor na
+  # internet), pega e renova sozinho o certificado HTTPS e manda o http para
+  # o https. Com ":80" (rede da oficina, sem domínio), serve http simples.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      HERMES_DOMINIO: ${HERMES_DOMINIO:-:80}
+    ports:
+      - "${HERMES_PORT:-80}:80"
+      - "${HERMES_PORTA_HTTPS:-443}:443"
+      - "${HERMES_PORTA_HTTPS:-443}:443/udp"
+    volumes:
+      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificados: perder isto obriga a pedir de novo (há limite por semana).
+      - caddy_dados:/data
+      - caddy_config:/config
+    <<: *logs
+
 volumes:
   dados:
+  caddy_dados:
+  caddy_config:

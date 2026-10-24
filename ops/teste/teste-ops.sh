@@ -2,6 +2,8 @@
 # ==========================================================
 # Roda DENTRO do mini PC de mentira (quem chama é o ops/teste/rodar.sh).
 # Testa de ponta a ponta:
+#  - a porta de entrada (Caddy) e o primeiro acesso de servidor na internet
+#    (criar-dono.sh; a tela recusa);
 #  - backup-agora;
 #  - restaurar: .sql e .sql.enc, da lista, do HD, de um pendrive, cancelado,
 #    arquivo que não é backup, cópia cortada, erro no meio, senha errada;
@@ -21,8 +23,11 @@ titulo() { printf '\n\033[1m######## %s\033[0m\n' "$*"; }
 
 BK=/srv/hermes-e2e/backups
 HD=/mnt/hermes-e2e-hd
-H=/opt/hermes
+# O clone fica numa pasta que o Docker da máquina também enxerga, no mesmo
+# caminho: o Caddy lê o ops/Caddyfile direto do disco.
+H=/srv/hermes-e2e/hermes
 
+rm -rf "${H:?}"
 git clone -q --branch v9.9.1 /e2e/bare.git $H 2>/dev/null
 # shellcheck disable=SC1091
 source $H/ops/comum.sh
@@ -34,7 +39,10 @@ HERMES_VERSAO=v9.9.1
 POSTGRES_PASSWORD=$(openssl rand -hex 24)
 SESSAO_SEGREDO=$(openssl rand -hex 32)
 TZ=America/Sao_Paulo
+HERMES_DOMINIO=:80
 HERMES_PORT=3398
+HERMES_PORTA_HTTPS=3443
+PRIMEIRO_ACESSO_WEB=false
 HERMES_BACKUPS=$BK
 HERMES_HD_EXTERNO=$HD
 BACKUP_RETENCAO_DIAS=14
@@ -61,7 +69,19 @@ titulo "Subindo a v9.9.1"
 dc up -d </dev/null 2>&1 | tail -n 2
 esperar_saude 240 || { dc logs --tail 60 app; exit 1; }
 confere "sistema no ar" true
-confere "primeiro acesso cria o Dono" '[ "$(api POST /api/auth/primeiro-acesso "{\"oficinaNome\":\"Oficina E2E\",\"nome\":\"Dono Antes\",\"email\":\"dono@oficina.com\",\"senha\":\"senha-forte-123\"}")" = 201 ]'
+confere "a porta de entrada (Caddy) entrega o sistema" 'dc exec -T caddy wget -qO- http://127.0.0.1/api/health </dev/null | grep -q "\"status\":\"ok\""'
+confere "e a tela (index.html)" 'dc exec -T caddy wget -qO- http://127.0.0.1/ </dev/null | grep -q "<div id=\"root\">"'
+
+titulo "Primeiro acesso de servidor na internet"
+PRIMEIRO_WEB='{"oficinaNome":"Oficina Robo","nome":"Robo","email":"robo@x.com","senha":"senha-forte-123"}'
+confere "pela tela: recusado (403)" '[ "$(api POST /api/auth/primeiro-acesso "$PRIMEIRO_WEB")" = 403 ] && [ "$(sqlv "SELECT count(*) FROM usuarios")" = 0 ]'
+SAIDA=$(printf 'Oficina E2E\nDono Antes\ndono@oficina.com\nsenha-forte-123\nsenha-diferente\n' | $H/ops/criar-dono.sh 2>&1)
+confere "criar-dono.sh: senhas diferentes, não cria" '[ $? -ne 0 ] && echo "$SAIDA" | grep -q "não são iguais" && [ "$(sqlv "SELECT count(*) FROM usuarios")" = 0 ]'
+SAIDA=$(printf 'Oficina E2E\nDono Antes\ndono@oficina.com\nsenha-forte-123\nsenha-forte-123\n' | $H/ops/criar-dono.sh 2>&1); echo "$SAIDA" | tail -n 2 | sed 's/^/    | /'
+confere "criar-dono.sh: cria o Dono" '[ "$(sqlv "SELECT perfil FROM usuarios")" = DONO ] && [ "$(login)" = 200 ]'
+confere "e não aparece a senha em lugar nenhum da saída" '! echo "$SAIDA" | grep -q "senha-forte-123"'
+SAIDA=$(printf 'Outra\nIntruso\nintruso@x.com\nsenha-forte-456\nsenha-forte-456\n' | $H/ops/criar-dono.sh 2>&1)
+confere "criar-dono.sh de novo: recusa (já configurado)" '[ $? -ne 0 ] && [ "$(sqlv "SELECT count(*) FROM usuarios")" = 1 ]'
 
 titulo "backup-agora.sh"
 SAIDA=$($H/ops/backup-agora.sh 2>&1); echo "$SAIDA" | sed 's/^/    | /'
@@ -173,7 +193,7 @@ confere "volta para a v9.9.1 pelo mesmo caminho" '[ $RC -eq 0 ] && [ "$(ler_env 
 
 titulo "Faxina"
 dc down -v </dev/null >/dev/null 2>&1
-rm -rf "${BK:?}" "${HD:?}"
+rm -rf "${BK:?}" "${HD:?}" "${H:?}"
 docker volume ls --format '{{.Name}}' | grep -q '^hermes-e2e_' && echo "  sobrou volume" || echo "  ok"
 
 echo
