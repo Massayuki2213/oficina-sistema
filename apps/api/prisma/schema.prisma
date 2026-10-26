@@ -262,6 +262,8 @@ model Peca {
   sku           String?         @unique
   codigoBarras  String?         @unique @map("codigo_barras")
   tipo          TipoItemEstoque @default(PECA)
+  // Texto livre ("Freios", "Elétrica"): filtra o estoque. Sugestões em CATEGORIAS_PECA.
+  categoria     String?
   fornecedorId  String?         @map("fornecedor_id")
   // Custo médio ponderado (RN-04), recalculado a cada entrada com custo.
   precoCusto    Decimal         @map("preco_custo") @db.Decimal(10, 2)
@@ -285,6 +287,7 @@ model Peca {
   vendaItens     VendaItem[]
 
   @@index([nome])
+  @@index([categoria])
   @@map("pecas")
 }
 

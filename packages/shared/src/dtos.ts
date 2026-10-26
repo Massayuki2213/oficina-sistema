@@ -244,6 +244,7 @@ export interface PecaDTO {
   sku: string | null;
   codigoBarras: string | null;
   tipo: TipoItemEstoque;
+  categoria: string | null;
   fornecedor: { id: ID; nome: string } | null;
   precoVenda: number;
   /** null para quem não vê custo. */
@@ -645,7 +646,8 @@ export interface EncomendaPendenteDTO {
 /** O que o "carregar catálogo inicial" pôs no catálogo (e o que já estava lá). */
 export interface CatalogoInicialDTO {
   servicos: { criados: number; jaExistiam: number };
-  pecas: { criados: number; jaExistiam: number };
+  /** `categorizadas`: peças do catálogo que já existiam sem categoria e ganharam a dela. */
+  pecas: { criados: number; jaExistiam: number; categorizadas: number };
 }
 
 /** RN-03: peças com preço estimado que o Dono ainda não conferiu (detalhes do erro PRECO_A_CONFERIR). */

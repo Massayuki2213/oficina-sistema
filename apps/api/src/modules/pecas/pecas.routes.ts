@@ -24,6 +24,9 @@ export const pecasRoutes: FastifyPluginAsyncZod = async (app) => {
     service.buscarPorCodigo(req.params.codigo, req.usuario),
   );
 
+  // GET /api/pecas/categorias — as categorias em uso (o filtro do estoque).
+  app.get('/categorias', { schema: { tags } }, () => service.categorias());
+
   app.get('/:id', { schema: { tags, params: idParams } }, (req) => service.buscar(req.params.id, req.usuario));
 
   app.get('/:id/movimentos', { schema: { tags, params: idParams, querystring: movimentosQuery } }, (req) =>

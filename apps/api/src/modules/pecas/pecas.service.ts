@@ -32,6 +32,7 @@ export function paraPecaDTO(p: PecaComFornecedor, ator: UsuarioSessao): PecaDTO 
     sku: p.sku,
     codigoBarras: p.codigoBarras,
     tipo: p.tipo,
+    categoria: p.categoria,
     fornecedor: p.fornecedor,
     precoVenda: num(p.precoVenda),
     precoCusto: veCusto ? num(p.precoCusto) : null,
@@ -51,10 +52,13 @@ export async function listar(q: z.output<typeof listarPecasQuery>, ator: Usuario
   const where: Prisma.PecaWhereInput = {
     ativo: true,
     ...(q.fornecedorId ? { fornecedorId: q.fornecedorId } : {}),
+    ...(q.categoria ? { categoria: { equals: q.categoria, mode: 'insensitive' } } : {}),
+    ...(q.semCategoria ? { categoria: null } : {}),
     ...(q.busca
       ? {
           OR: [
             { nome: { contains: q.busca, mode: 'insensitive' } },
+            { categoria: { contains: q.busca, mode: 'insensitive' } },
             { sku: { contains: q.busca, mode: 'insensitive' } },
             { codigoBarras: { contains: q.busca } },
             { localizacao: { contains: q.busca, mode: 'insensitive' } },
@@ -80,6 +84,17 @@ export async function listar(q: z.output<typeof listarPecasQuery>, ator: Usuario
     total,
     q,
   );
+}
+
+/** As categorias em uso nas peças ativas, em ordem — o filtro do estoque. */
+export async function categorias(): Promise<string[]> {
+  const linhas = await prisma.peca.findMany({
+    where: { ativo: true, categoria: { not: null } },
+    distinct: ['categoria'],
+    select: { categoria: true },
+    orderBy: { categoria: 'asc' },
+  });
+  return linhas.map((l) => l.categoria!);
 }
 
 /** O "bip" do leitor: acha a peça pelo código de barras. */
@@ -124,7 +139,7 @@ export async function criarRapida(dados: z.output<typeof pecaRapidaSchema>, ator
   if (existente) return buscar(existente.id, ator);
 
   const p = await prisma.peca.create({
-    data: { nome: dados.nome, unidade: dados.unidade, precoCusto: 0, precoVenda: 0, precoADefinir: true },
+    data: { nome: dados.nome, unidade: dados.unidade, categoria: dados.categoria ?? null, precoCusto: 0, precoVenda: 0, precoADefinir: true },
   });
   return buscar(p.id, ator);
 }

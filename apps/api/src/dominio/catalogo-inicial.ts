@@ -1,5 +1,7 @@
 import type { PrismaClient, TipoItemEstoque } from '@prisma/client';
-import type { CatalogoInicialDTO } from '@hermes/shared';
+import type { CATEGORIAS_PECA, CatalogoInicialDTO } from '@hermes/shared';
+
+type CategoriaPeca = (typeof CATEGORIAS_PECA)[number];
 
 // ============================================================
 // Catálogo inicial — o que quase toda oficina faz e usa, para a
@@ -90,145 +92,182 @@ export const SERVICOS_INICIAIS: [string, string, number | null][] = [
 ];
 
 /**
- * [nome, unidade, tipo] — os nomes como a autopeça vende. PRODUTO é o que se
- * vende por medida ou embalagem (óleo, fluido, spray); PEÇA, o resto. A peça
- * que muda de carro para carro (filtro, pastilha, amortecedor) fica genérica:
- * a aplicação vai na lista para a autopeça (placa, ano, chassi).
+ * Peças por categoria — os nomes como a autopeça vende. [nome, unidade, tipo]:
+ * PRODUTO é o que se vende por medida ou embalagem (óleo, fluido, spray);
+ * PEÇA, o resto. A peça que muda de carro para carro (filtro, pastilha,
+ * amortecedor) fica genérica: a aplicação vai na lista para a autopeça
+ * (placa, ano, chassi). As categorias são as sugeridas em CATEGORIAS_PECA.
  */
-export const PECAS_INICIAIS: [string, string, TipoItemEstoque][] = [
-  // Óleos e fluidos
-  ['Óleo de motor 0W20 sintético', 'L', 'PRODUTO'],
-  ['Óleo de motor 5W30 sintético', 'L', 'PRODUTO'],
-  ['Óleo de motor 5W40 sintético', 'L', 'PRODUTO'],
-  ['Óleo de motor 10W40 semissintético', 'L', 'PRODUTO'],
-  ['Óleo de motor 15W40 mineral', 'L', 'PRODUTO'],
-  ['Óleo de motor 20W50 mineral', 'L', 'PRODUTO'],
-  ['Óleo de câmbio 75W80', 'L', 'PRODUTO'],
-  ['Óleo de câmbio 75W90', 'L', 'PRODUTO'],
-  ['Fluido ATF (câmbio automático e direção)', 'L', 'PRODUTO'],
-  ['Fluido de freio DOT 3 500 ml', 'un', 'PRODUTO'],
-  ['Fluido de freio DOT 4 500 ml', 'un', 'PRODUTO'],
-  ['Aditivo para radiador concentrado 1 L', 'un', 'PRODUTO'],
-  ['Gás refrigerante R-134a', 'kg', 'PRODUTO'],
-  ['Higienizador de ar-condicionado', 'un', 'PRODUTO'],
-  ['Limpador de bicos e TBI (spray)', 'un', 'PRODUTO'],
-  ['Desengripante spray 300 ml', 'un', 'PRODUTO'],
-  ['Limpa-contato spray 300 ml', 'un', 'PRODUTO'],
-  ['Graxa multiuso 500 g', 'un', 'PRODUTO'],
-  ['Material de consumo (estopa, abraçadeira, fita)', 'un', 'PRODUTO'],
-  // Filtros e ignição
-  ['Filtro de óleo', 'un', 'PECA'],
-  ['Filtro de ar do motor', 'un', 'PECA'],
-  ['Filtro de combustível', 'un', 'PECA'],
-  ['Filtro de cabine (ar-condicionado)', 'un', 'PECA'],
-  ['Vela de ignição', 'un', 'PECA'],
-  ['Jogo de cabos de vela', 'jg', 'PECA'],
-  ['Bobina de ignição', 'un', 'PECA'],
-  // Freios
-  ['Pastilha de freio dianteira', 'jg', 'PECA'],
-  ['Pastilha de freio traseira', 'jg', 'PECA'],
-  ['Disco de freio dianteiro', 'par', 'PECA'],
-  ['Disco de freio traseiro', 'par', 'PECA'],
-  ['Lona de freio traseira', 'jg', 'PECA'],
-  ['Tambor de freio', 'un', 'PECA'],
-  ['Cilindro de roda', 'un', 'PECA'],
-  ['Cilindro mestre de freio', 'un', 'PECA'],
-  ['Flexível de freio', 'un', 'PECA'],
-  ['Kit reparo da pinça de freio', 'kit', 'PECA'],
-  ['Cabo do freio de mão', 'un', 'PECA'],
-  // Suspensão
-  ['Amortecedor dianteiro', 'un', 'PECA'],
-  ['Amortecedor traseiro', 'un', 'PECA'],
-  ['Kit batente e coifa do amortecedor', 'kit', 'PECA'],
-  ['Coxim do amortecedor dianteiro', 'un', 'PECA'],
-  ['Mola helicoidal', 'un', 'PECA'],
-  ['Bandeja de suspensão', 'un', 'PECA'],
-  ['Pivô de suspensão', 'un', 'PECA'],
-  ['Bucha da bandeja', 'un', 'PECA'],
-  ['Bieleta', 'un', 'PECA'],
-  ['Bucha da barra estabilizadora', 'un', 'PECA'],
-  ['Rolamento de roda dianteira', 'un', 'PECA'],
-  ['Cubo de roda traseira com rolamento', 'un', 'PECA'],
-  // Direção
-  ['Terminal de direção', 'un', 'PECA'],
-  ['Barra axial de direção', 'un', 'PECA'],
-  ['Coifa da caixa de direção', 'un', 'PECA'],
-  ['Bomba de direção hidráulica', 'un', 'PECA'],
-  // Motor e correias
-  ['Kit correia dentada com tensor', 'kit', 'PECA'],
-  ['Correia do alternador (poli-V)', 'un', 'PECA'],
-  ['Tensor da correia do alternador', 'un', 'PECA'],
-  ['Junta da tampa de válvulas', 'un', 'PECA'],
-  ['Junta do cabeçote', 'un', 'PECA'],
-  ['Retentor do virabrequim', 'un', 'PECA'],
-  ['Bico injetor', 'un', 'PECA'],
-  ['Sonda lambda', 'un', 'PECA'],
-  ['Sensor de rotação', 'un', 'PECA'],
-  ['Sensor de temperatura', 'un', 'PECA'],
-  ['Coxim do motor', 'un', 'PECA'],
-  ['Coxim do câmbio', 'un', 'PECA'],
-  // Arrefecimento
-  ["Bomba d'água", 'un', 'PECA'],
-  ['Válvula termostática', 'un', 'PECA'],
-  ['Mangueira superior do radiador', 'un', 'PECA'],
-  ['Mangueira inferior do radiador', 'un', 'PECA'],
-  ['Reservatório de expansão', 'un', 'PECA'],
-  ['Tampa do reservatório de expansão', 'un', 'PECA'],
-  ['Eletroventilador do radiador', 'un', 'PECA'],
-  ['Radiador', 'un', 'PECA'],
-  // Embreagem e transmissão
-  ['Kit de embreagem (platô, disco e rolamento)', 'kit', 'PECA'],
-  ['Cabo de embreagem', 'un', 'PECA'],
-  ['Cilindro auxiliar da embreagem', 'un', 'PECA'],
-  ['Junta homocinética', 'un', 'PECA'],
-  ['Kit coifa da homocinética', 'kit', 'PECA'],
-  // Elétrica
-  ['Bateria 45 Ah', 'un', 'PECA'],
-  ['Bateria 60 Ah', 'un', 'PECA'],
-  ['Bateria 70 Ah', 'un', 'PECA'],
-  ['Lâmpada H1 12V 55W', 'un', 'PECA'],
-  ['Lâmpada H4 12V 60/55W', 'un', 'PECA'],
-  ['Lâmpada H7 12V 55W', 'un', 'PECA'],
-  ['Lâmpada H11 12V 55W', 'un', 'PECA'],
-  ['Lâmpada pingo T10 12V 5W', 'un', 'PECA'],
-  ['Lâmpada 1 polo 12V 21W', 'un', 'PECA'],
-  ['Lâmpada 2 polos 12V 21/5W', 'un', 'PECA'],
-  ['Fusível lâmina', 'un', 'PECA'],
-  ['Relé auxiliar 12V', 'un', 'PECA'],
-  ['Regulador de voltagem do alternador', 'un', 'PECA'],
-  ['Motor de partida', 'un', 'PECA'],
-  ['Alternador', 'un', 'PECA'],
-  // Limpador e ar-condicionado
-  ['Palheta do limpador 16"', 'un', 'PECA'],
-  ['Palheta do limpador 18"', 'un', 'PECA'],
-  ['Palheta do limpador 20"', 'un', 'PECA'],
-  ['Palheta do limpador 22"', 'un', 'PECA'],
-  ['Palheta do limpador 24"', 'un', 'PECA'],
-  ['Filtro secador do ar-condicionado', 'un', 'PECA'],
-  ['Válvula de expansão do ar-condicionado', 'un', 'PECA'],
-];
+const PECAS_POR_CATEGORIA: Record<CategoriaPeca, [string, string, TipoItemEstoque][]> = {
+  'Óleos e fluidos': [
+    ['Óleo de motor 0W20 sintético', 'L', 'PRODUTO'],
+    ['Óleo de motor 5W30 sintético', 'L', 'PRODUTO'],
+    ['Óleo de motor 5W40 sintético', 'L', 'PRODUTO'],
+    ['Óleo de motor 10W40 semissintético', 'L', 'PRODUTO'],
+    ['Óleo de motor 15W40 mineral', 'L', 'PRODUTO'],
+    ['Óleo de motor 20W50 mineral', 'L', 'PRODUTO'],
+    ['Óleo de câmbio 75W80', 'L', 'PRODUTO'],
+    ['Óleo de câmbio 75W90', 'L', 'PRODUTO'],
+    ['Fluido ATF (câmbio automático e direção)', 'L', 'PRODUTO'],
+    ['Fluido de freio DOT 3 500 ml', 'un', 'PRODUTO'],
+    ['Fluido de freio DOT 4 500 ml', 'un', 'PRODUTO'],
+    ['Aditivo para radiador concentrado 1 L', 'un', 'PRODUTO'],
+  ],
+  Filtros: [
+    ['Filtro de óleo', 'un', 'PECA'],
+    ['Filtro de ar do motor', 'un', 'PECA'],
+    ['Filtro de combustível', 'un', 'PECA'],
+    ['Filtro de cabine (ar-condicionado)', 'un', 'PECA'],
+  ],
+  Ignição: [
+    ['Vela de ignição', 'un', 'PECA'],
+    ['Jogo de cabos de vela', 'jg', 'PECA'],
+    ['Bobina de ignição', 'un', 'PECA'],
+  ],
+  Freios: [
+    ['Pastilha de freio dianteira', 'jg', 'PECA'],
+    ['Pastilha de freio traseira', 'jg', 'PECA'],
+    ['Disco de freio dianteiro', 'par', 'PECA'],
+    ['Disco de freio traseiro', 'par', 'PECA'],
+    ['Lona de freio traseira', 'jg', 'PECA'],
+    ['Tambor de freio', 'un', 'PECA'],
+    ['Cilindro de roda', 'un', 'PECA'],
+    ['Cilindro mestre de freio', 'un', 'PECA'],
+    ['Flexível de freio', 'un', 'PECA'],
+    ['Kit reparo da pinça de freio', 'kit', 'PECA'],
+    ['Cabo do freio de mão', 'un', 'PECA'],
+  ],
+  Suspensão: [
+    ['Amortecedor dianteiro', 'un', 'PECA'],
+    ['Amortecedor traseiro', 'un', 'PECA'],
+    ['Kit batente e coifa do amortecedor', 'kit', 'PECA'],
+    ['Coxim do amortecedor dianteiro', 'un', 'PECA'],
+    ['Mola helicoidal', 'un', 'PECA'],
+    ['Bandeja de suspensão', 'un', 'PECA'],
+    ['Pivô de suspensão', 'un', 'PECA'],
+    ['Bucha da bandeja', 'un', 'PECA'],
+    ['Bieleta', 'un', 'PECA'],
+    ['Bucha da barra estabilizadora', 'un', 'PECA'],
+    ['Rolamento de roda dianteira', 'un', 'PECA'],
+    ['Cubo de roda traseira com rolamento', 'un', 'PECA'],
+  ],
+  Direção: [
+    ['Terminal de direção', 'un', 'PECA'],
+    ['Barra axial de direção', 'un', 'PECA'],
+    ['Coifa da caixa de direção', 'un', 'PECA'],
+    ['Bomba de direção hidráulica', 'un', 'PECA'],
+  ],
+  Motor: [
+    ['Kit correia dentada com tensor', 'kit', 'PECA'],
+    ['Correia do alternador (poli-V)', 'un', 'PECA'],
+    ['Tensor da correia do alternador', 'un', 'PECA'],
+    ['Junta da tampa de válvulas', 'un', 'PECA'],
+    ['Junta do cabeçote', 'un', 'PECA'],
+    ['Retentor do virabrequim', 'un', 'PECA'],
+    ['Bico injetor', 'un', 'PECA'],
+    ['Sonda lambda', 'un', 'PECA'],
+    ['Sensor de rotação', 'un', 'PECA'],
+    ['Sensor de temperatura', 'un', 'PECA'],
+    ['Coxim do motor', 'un', 'PECA'],
+    ['Coxim do câmbio', 'un', 'PECA'],
+  ],
+  Arrefecimento: [
+    ["Bomba d'água", 'un', 'PECA'],
+    ['Válvula termostática', 'un', 'PECA'],
+    ['Mangueira superior do radiador', 'un', 'PECA'],
+    ['Mangueira inferior do radiador', 'un', 'PECA'],
+    ['Reservatório de expansão', 'un', 'PECA'],
+    ['Tampa do reservatório de expansão', 'un', 'PECA'],
+    ['Eletroventilador do radiador', 'un', 'PECA'],
+    ['Radiador', 'un', 'PECA'],
+  ],
+  'Embreagem e transmissão': [
+    ['Kit de embreagem (platô, disco e rolamento)', 'kit', 'PECA'],
+    ['Cabo de embreagem', 'un', 'PECA'],
+    ['Cilindro auxiliar da embreagem', 'un', 'PECA'],
+    ['Junta homocinética', 'un', 'PECA'],
+    ['Kit coifa da homocinética', 'kit', 'PECA'],
+  ],
+  Elétrica: [
+    ['Bateria 45 Ah', 'un', 'PECA'],
+    ['Bateria 60 Ah', 'un', 'PECA'],
+    ['Bateria 70 Ah', 'un', 'PECA'],
+    ['Fusível lâmina', 'un', 'PECA'],
+    ['Relé auxiliar 12V', 'un', 'PECA'],
+    ['Regulador de voltagem do alternador', 'un', 'PECA'],
+    ['Motor de partida', 'un', 'PECA'],
+    ['Alternador', 'un', 'PECA'],
+  ],
+  Iluminação: [
+    ['Lâmpada H1 12V 55W', 'un', 'PECA'],
+    ['Lâmpada H4 12V 60/55W', 'un', 'PECA'],
+    ['Lâmpada H7 12V 55W', 'un', 'PECA'],
+    ['Lâmpada H11 12V 55W', 'un', 'PECA'],
+    ['Lâmpada pingo T10 12V 5W', 'un', 'PECA'],
+    ['Lâmpada 1 polo 12V 21W', 'un', 'PECA'],
+    ['Lâmpada 2 polos 12V 21/5W', 'un', 'PECA'],
+  ],
+  Limpador: [
+    ['Palheta do limpador 16"', 'un', 'PECA'],
+    ['Palheta do limpador 18"', 'un', 'PECA'],
+    ['Palheta do limpador 20"', 'un', 'PECA'],
+    ['Palheta do limpador 22"', 'un', 'PECA'],
+    ['Palheta do limpador 24"', 'un', 'PECA'],
+  ],
+  'Ar-condicionado': [
+    ['Gás refrigerante R-134a', 'kg', 'PRODUTO'],
+    ['Higienizador de ar-condicionado', 'un', 'PRODUTO'],
+    ['Filtro secador do ar-condicionado', 'un', 'PECA'],
+    ['Válvula de expansão do ar-condicionado', 'un', 'PECA'],
+  ],
+  'Química e consumo': [
+    ['Limpador de bicos e TBI (spray)', 'un', 'PRODUTO'],
+    ['Desengripante spray 300 ml', 'un', 'PRODUTO'],
+    ['Limpa-contato spray 300 ml', 'un', 'PRODUTO'],
+    ['Graxa multiuso 500 g', 'un', 'PRODUTO'],
+    ['Material de consumo (estopa, abraçadeira, fita)', 'un', 'PRODUTO'],
+  ],
+};
+
+export const PECAS_INICIAIS = Object.entries(PECAS_POR_CATEGORIA).flatMap(([categoria, itens]) =>
+  itens.map(([nome, unidade, tipo]) => ({ nome, unidade, tipo, categoria })),
+);
 
 const chave = (nome: string) => nome.trim().toLocaleLowerCase('pt-BR');
 
-/** Põe no catálogo o que ainda não está lá. Devolve quantos entraram e quantos já existiam. */
+/**
+ * Põe no catálogo o que ainda não está lá. A peça do catálogo que já existia
+ * sem categoria ganha a dela (quem carregou antes de haver categoria).
+ */
 export async function carregarCatalogoInicial(db: PrismaClient): Promise<CatalogoInicialDTO> {
   return db.$transaction(async (tx) => {
     const servicosExistentes = new Set((await tx.servico.findMany({ select: { nome: true } })).map((s) => chave(s.nome)));
-    const pecasExistentes = new Set((await tx.peca.findMany({ select: { nome: true } })).map((p) => chave(p.nome)));
+    const pecasExistentes = new Map(
+      (await tx.peca.findMany({ select: { id: true, nome: true, categoria: true } })).map((p) => [chave(p.nome), p]),
+    );
 
     const servicosNovos = SERVICOS_INICIAIS.filter(([nome]) => !servicosExistentes.has(chave(nome)));
-    const pecasNovas = PECAS_INICIAIS.filter(([nome]) => !pecasExistentes.has(chave(nome)));
+    const pecasNovas = PECAS_INICIAIS.filter((p) => !pecasExistentes.has(chave(p.nome)));
 
     await tx.servico.createMany({
       data: servicosNovos.map(([nome, categoria, tempoEstimadoMin]) => ({ nome, categoria, tempoEstimadoMin, precoMaoDeObra: 0 })),
     });
     await tx.peca.createMany({
-      data: pecasNovas.map(([nome, unidade, tipo]) => ({ nome, unidade, tipo, precoCusto: 0, precoVenda: 0, precoADefinir: true })),
+      data: pecasNovas.map((p) => ({ ...p, precoCusto: 0, precoVenda: 0, precoADefinir: true })),
     });
+
+    let categorizadas = 0;
+    for (const p of PECAS_INICIAIS) {
+      const existente = pecasExistentes.get(chave(p.nome));
+      if (existente && !existente.categoria) {
+        await tx.peca.update({ where: { id: existente.id }, data: { categoria: p.categoria } });
+        categorizadas++;
+      }
+    }
 
     return {
       servicos: { criados: servicosNovos.length, jaExistiam: SERVICOS_INICIAIS.length - servicosNovos.length },
-      pecas: { criados: pecasNovas.length, jaExistiam: PECAS_INICIAIS.length - pecasNovas.length },
+      pecas: { criados: pecasNovas.length, jaExistiam: PECAS_INICIAIS.length - pecasNovas.length, categorizadas },
     };
   });
 }

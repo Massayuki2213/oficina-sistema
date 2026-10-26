@@ -4,6 +4,15 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Categoria da peça** e filtro por categoria no Estoque (com "Sem categoria", para achar o que
+  falta organizar); a busca também acha pela categoria. A categoria é texto livre, com 14 sugeridas
+  (Freios, Suspensão, Óleos e fluidos, Iluminação...). As peças do catálogo inicial já entram com a
+  delas; carregar o catálogo de novo dá categoria às que já existiam sem.
+
+## [1.0.0-rc.3] — 2026-10-26
+
 Encomenda de peças, para a oficina que trabalha com pouco estoque: o cliente aprova o orçamento
 com o preço estimado da peça, o Dono pede à autopeça e acerta o preço pela nota.
 

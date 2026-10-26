@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowDownToLine, ClipboardCheck, History, Plus, ScanBarcode } from 'lucide-react';
 import { brl, formatarQtd, type PecaDTO } from '@hermes/shared';
 import { ApiError, http, mensagemDeErro } from '../../api/http';
@@ -20,6 +21,7 @@ import {
   PageHeader,
   Paginacao,
   Painel,
+  Selecao,
   linhaCls,
   tdCls,
   thCls,
@@ -29,11 +31,21 @@ import { AjustePeca, EntradaPeca, KardexPeca } from './Movimentos';
 
 type Janela = { tipo: 'form'; peca: PecaDTO | null; codigo?: string } | { tipo: 'entrada' | 'ajuste' | 'kardex'; peca: PecaDTO } | null;
 
+/** Opção do filtro para achar o que ainda não foi organizado. */
+const SEM_CATEGORIA = '__sem__';
+
 export default function EstoquePage() {
   const { pode } = useSessao();
   const avisos = useAvisos();
   const [baixo, setBaixo] = useState(false);
-  const lista = useListaPaginada<PecaDTO>('pecas', '/pecas', { baixo: baixo || undefined });
+  const [categoria, setCategoria] = useState('');
+  const categorias = useQuery({ queryKey: ['pecas', 'categorias'], queryFn: () => http.get<string[]>('/pecas/categorias') });
+  const filtros = {
+    baixo: baixo || undefined,
+    categoria: categoria && categoria !== SEM_CATEGORIA ? categoria : undefined,
+    semCategoria: categoria === SEM_CATEGORIA || undefined,
+  };
+  const lista = useListaPaginada<PecaDTO>('pecas', '/pecas', filtros);
   const itens = lista.dados?.itens ?? [];
   const [janela, setJanela] = useState<Janela>(null);
   const verCusto = pode('verCusto');
@@ -53,11 +65,12 @@ export default function EstoquePage() {
   });
 
   async function exportar() {
-    const todas = await buscarTodas<PecaDTO>('/pecas', { baixo: baixo || undefined, busca: lista.busca });
+    const todas = await buscarTodas<PecaDTO>('/pecas', { ...filtros, busca: lista.busca });
     baixarCSV(
       `estoque-${new Date().toISOString().slice(0, 10)}`,
       [
         { titulo: 'Peça', valor: (p) => p.nome },
+        { titulo: 'Categoria', valor: (p) => p.categoria },
         { titulo: 'Código de barras', valor: (p) => p.codigoBarras },
         { titulo: 'SKU', valor: (p) => p.sku },
         { titulo: 'Local', valor: (p) => p.localizacao },
@@ -92,6 +105,17 @@ export default function EstoquePage() {
             }}
           />
         )}
+        <div className="w-56">
+          <Selecao value={categoria} onChange={(e) => setCategoria(e.target.value)} aria-label="Categoria">
+            <option value="">Todas as categorias</option>
+            {(categorias.data ?? []).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+            <option value={SEM_CATEGORIA}>Sem categoria</option>
+          </Selecao>
+        </div>
         <div className="w-60">
           <Marcador checked={baixo} onChange={setBaixo}>
             Só o que precisa repor
@@ -103,7 +127,7 @@ export default function EstoquePage() {
         </BtnGhost>
       </div>
 
-      {pode('configurarOficina') && !lista.busca && !baixo && lista.dados?.total === 0 && <CatalogoInicial />}
+      {pode('configurarOficina') && !lista.busca && !baixo && !categoria && lista.dados?.total === 0 && <CatalogoInicial />}
 
       <Painel>
         <table className="w-full">
@@ -131,7 +155,11 @@ export default function EstoquePage() {
               <tr key={p.id} className={linhaCls}>
                 <td className={tdCls}>
                   <div className="font-bold">{p.nome}</div>
-                  <div className="text-xs text-grafite/45 font-mono">{[p.codigoBarras, p.sku].filter(Boolean).join(' · ') || '—'}</div>
+                  <div className="text-xs text-grafite/45">
+                    {p.categoria && <span className="font-semibold text-grafite/60">{p.categoria}</span>}
+                    {p.categoria && (p.codigoBarras || p.sku) && ' · '}
+                    <span className="font-mono">{[p.codigoBarras, p.sku].filter(Boolean).join(' · ') || (p.categoria ? '' : '—')}</span>
+                  </div>
                 </td>
                 <td className={`${tdCls} text-grafite/60`}>{p.localizacao ?? '—'}</td>
                 <td className={`${tdCls} text-right whitespace-nowrap`}>

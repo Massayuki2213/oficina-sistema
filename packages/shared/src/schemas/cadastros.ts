@@ -104,6 +104,8 @@ const pecaBase = {
     .optional(),
   sku: textoOpcional(50),
   tipo: z.enum(TIPOS_ITEM_ESTOQUE).default('PECA'),
+  /** Texto livre (ex.: "Freios"); as sugestões estão em CATEGORIAS_PECA. */
+  categoria: textoOpcional(60),
   fornecedorId: idOpcional,
   precoCusto: dinheiro('Informe o custo'),
   precoVenda: dinheiro('Informe o preço de venda'),
@@ -131,12 +133,16 @@ export type CriarPecaInput = z.input<typeof criarPecaSchema>;
 export const pecaRapidaSchema = z.object({
   nome: pecaBase.nome,
   unidade: pecaBase.unidade,
+  categoria: pecaBase.categoria,
 });
 export type PecaRapidaInput = z.input<typeof pecaRapidaSchema>;
 
 export const listarPecasQuery = paginacaoQuery.extend({
   baixo: booleanoQuery,
   fornecedorId: z.string().optional(),
+  categoria: z.string().trim().min(1).optional(),
+  /** Só as peças ainda sem categoria (para organizar o catálogo). */
+  semCategoria: booleanoQuery,
 });
 
 /** Entrada de mercadoria (reposição, leitor de código de barras). */

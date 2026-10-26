@@ -16,6 +16,27 @@ export type TipoPessoa = (typeof TIPOS_PESSOA)[number];
 export const TIPOS_ITEM_ESTOQUE = ['PECA', 'PRODUTO'] as const;
 export type TipoItemEstoque = (typeof TIPOS_ITEM_ESTOQUE)[number];
 
+/**
+ * Categorias de peça sugeridas (as do catálogo inicial). É sugestão, não
+ * lista fechada: a categoria é texto livre e a oficina cria as dela.
+ */
+export const CATEGORIAS_PECA = [
+  'Óleos e fluidos',
+  'Filtros',
+  'Ignição',
+  'Freios',
+  'Suspensão',
+  'Direção',
+  'Motor',
+  'Arrefecimento',
+  'Embreagem e transmissão',
+  'Elétrica',
+  'Iluminação',
+  'Limpador',
+  'Ar-condicionado',
+  'Química e consumo',
+] as const;
+
 export const STATUS_ORCAMENTO = ['RASCUNHO', 'ENVIADO', 'APROVADO', 'RECUSADO', 'EXPIRADO'] as const;
 export type StatusOrcamento = (typeof STATUS_ORCAMENTO)[number];
 

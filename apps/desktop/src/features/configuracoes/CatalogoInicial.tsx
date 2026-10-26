@@ -14,9 +14,10 @@ export function CatalogoInicial() {
   const carregar = useAcao(() => http.post<CatalogoInicialDTO>('/oficina/catalogo-inicial'), {
     invalidar: [['servicos'], ['pecas']],
     sucesso: ({ servicos, pecas }) =>
-      servicos.criados + pecas.criados === 0
+      (servicos.criados + pecas.criados === 0
         ? 'O catálogo já tinha tudo: nada foi acrescentado.'
-        : `Catálogo carregado: ${servicos.criados} serviço(s) e ${pecas.criados} peça(s).`,
+        : `Catálogo carregado: ${servicos.criados} serviço(s) e ${pecas.criados} peça(s).`) +
+      (pecas.categorizadas > 0 ? ` ${pecas.categorizadas} peça(s) ganharam categoria.` : ''),
   });
 
   return (

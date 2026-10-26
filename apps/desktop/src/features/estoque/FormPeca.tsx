@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wand2 } from 'lucide-react';
-import { LABEL_TIPO_ITEM_ESTOQUE, TIPOS_ITEM_ESTOQUE, arredondar, brl, type FornecedorDTO, type PecaDTO, type TipoItemEstoque } from '@hermes/shared';
+import {
+  CATEGORIAS_PECA,
+  LABEL_TIPO_ITEM_ESTOQUE,
+  TIPOS_ITEM_ESTOQUE,
+  arredondar,
+  brl,
+  type FornecedorDTO,
+  type PecaDTO,
+  type TipoItemEstoque,
+} from '@hermes/shared';
 import { ApiError, http, mensagemDeErro } from '../../api/http';
 import { useOficina } from '../../api/catalogo';
 import { useAvisos } from '../../lib/avisos';
@@ -26,9 +35,13 @@ export function FormPeca({
   const avisos = useAvisos();
   const oficina = useOficina();
   const fornecedores = useQuery({ queryKey: ['fornecedores'], queryFn: () => http.get<FornecedorDTO[]>('/fornecedores') });
+  const emUso = useQuery({ queryKey: ['pecas', 'categorias'], queryFn: () => http.get<string[]>('/pecas/categorias') });
+  // Sugestões: as do catálogo e as que a oficina já criou.
+  const sugestoes = [...new Set([...CATEGORIAS_PECA, ...(emUso.data ?? [])])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   const [nome, setNome] = useState(peca?.nome ?? '');
   const [tipo, setTipo] = useState<TipoItemEstoque>(peca?.tipo ?? 'PECA');
+  const [categoria, setCategoria] = useState(peca?.categoria ?? '');
   const [codigoBarras, setCodigoBarras] = useState(peca?.codigoBarras ?? codigoInicial ?? '');
   const [sku, setSku] = useState(peca?.sku ?? '');
   const [fornecedorId, setFornecedorId] = useState(peca?.fornecedor?.id ?? '');
@@ -49,6 +62,7 @@ export function FormPeca({
     const corpo = {
       nome: nome.trim(),
       tipo,
+      categoria: categoria.trim(),
       codigoBarras: codigoBarras.trim(),
       sku: sku.trim(),
       fornecedorId: fornecedorId || null,
@@ -115,16 +129,26 @@ export function FormPeca({
           <input value={localizacao} onChange={(e) => setLocalizacao(e.target.value)} className={inputCls} maxLength={60} placeholder="Ex.: A3" />
         </Campo>
       </div>
-      <Campo label="Distribuidor principal">
-        <Selecao value={fornecedorId} onChange={(e) => setFornecedorId(e.target.value)}>
-          <option value="">— nenhum —</option>
-          {(fornecedores.data ?? []).map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.nome}
-            </option>
-          ))}
-        </Selecao>
-      </Campo>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Campo label="Categoria" erro={erros.categoria} ajuda="Escolha da lista ou digite uma nova.">
+          <input value={categoria} onChange={(e) => setCategoria(e.target.value)} className={inputCls} maxLength={60} list="categorias-peca" placeholder="Ex.: Freios" />
+          <datalist id="categorias-peca">
+            {sugestoes.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </Campo>
+        <Campo label="Distribuidor principal">
+          <Selecao value={fornecedorId} onChange={(e) => setFornecedorId(e.target.value)}>
+            <option value="">— nenhum —</option>
+            {(fornecedores.data ?? []).map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.nome}
+              </option>
+            ))}
+          </Selecao>
+        </Campo>
+      </div>
       <div className="grid sm:grid-cols-3 gap-3 items-start">
         <Campo label="Custo (unidade)" erro={erros.precoCusto} ajuda={peca ? 'É o custo médio: as entradas com custo o recalculam.' : undefined}>
           <InputDinheiro value={custo} onChange={setCusto} />
