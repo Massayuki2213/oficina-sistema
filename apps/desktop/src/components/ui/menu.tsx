@@ -19,11 +19,13 @@ export function MenuMais({ itens, rotulo = 'Mais', paraBaixo }: { itens: ItemMen
   const caixa = useRef<HTMLDivElement>(null);
   const visiveis = itens.filter((i) => i.visivel !== false);
 
+  // Na CAPTURA: a janela (Modal) barra o mousedown que sobe — o menu do
+  // rodapé dela não fecharia com um clique fora.
   useEffect(() => {
     if (!aberto) return;
     const fora = (e: MouseEvent) => !caixa.current?.contains(e.target as Node) && setAberto(false);
-    document.addEventListener('mousedown', fora);
-    return () => document.removeEventListener('mousedown', fora);
+    document.addEventListener('mousedown', fora, true);
+    return () => document.removeEventListener('mousedown', fora, true);
   }, [aberto]);
 
   if (visiveis.length === 0) return null;

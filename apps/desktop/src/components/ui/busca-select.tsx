@@ -75,14 +75,15 @@ export function BuscaSelect<T>({
 
   useEffect(() => setAtivo(0), [termo]);
 
-  // Clique fora fecha.
+  // Clique fora fecha. Ouvido na CAPTURA: a janela (Modal) barra o mousedown
+  // que sobe, e sem isso a lista ficava aberta por cima da outra lá dentro.
   useEffect(() => {
     if (!aberto) return;
     const fora = (e: MouseEvent) => {
       if (!caixa.current?.contains(e.target as Node)) setAberto(false);
     };
-    document.addEventListener('mousedown', fora);
-    return () => document.removeEventListener('mousedown', fora);
+    document.addEventListener('mousedown', fora, true);
+    return () => document.removeEventListener('mousedown', fora, true);
   }, [aberto]);
 
   function escolher(item: T) {
@@ -144,6 +145,12 @@ export function BuscaSelect<T>({
           aria-controls={listaId}
           aria-autocomplete="list"
           onFocus={() => setAberto(true)}
+          // Saiu pelo teclado (Tab) para outro campo: fecha. Sem destino (clique
+          // na barra de rolagem da lista), quem decide é o clique fora, acima.
+          onBlur={(e) => {
+            const para = e.relatedTarget as Node | null;
+            if (para && !caixa.current?.contains(para)) setAberto(false);
+          }}
           onChange={(e) => {
             setTexto(e.target.value);
             setAberto(true);
