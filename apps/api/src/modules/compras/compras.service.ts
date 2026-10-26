@@ -1,6 +1,13 @@
 import type { Prisma } from '@prisma/client';
 import type { z } from 'zod';
-import type { CompraDTO, CompraResumoDTO, ContasAPagarDTO, ListaComprasDTO, UsuarioSessao } from '@hermes/shared';
+import type {
+  CompraDTO,
+  CompraResumoDTO,
+  ContasAPagarDTO,
+  EncomendaPendenteDTO,
+  ListaComprasDTO,
+  UsuarioSessao,
+} from '@hermes/shared';
 import type { compraSchema, listarComprasQuery, pagarCompraSchema } from '@hermes/shared/schemas';
 import { prisma } from '../../lib/prisma.js';
 import { conflito, invalido, naoEncontrado } from '../../lib/errors.js';
@@ -9,12 +16,17 @@ import { dataLocal, hojeISO, inicioDoDia, intervalo, isoOuNull } from '../../lib
 import { pagina, paginar } from '../../lib/paginacao.js';
 import { darEntrada, darSaida, calcularMargem } from '../../dominio/estoque.js';
 import { lancar } from '../../dominio/caixa.js';
+import { atenderEncomendas, encomendaPendente } from '../../dominio/encomendas.js';
+import { paraPecaDTO } from '../pecas/pecas.service.js';
 
 // ============================================================
 // Compras do distribuidor (contas a pagar).
 // Os itens dão entrada no estoque ao registrar (e recalculam o custo
 // médio, RN-04); o dinheiro só sai do caixa quando a compra é paga —
 // regime de caixa, sem contar a peça duas vezes no lucro.
+//
+// A compra também atende as encomendas das OS (RN-03): a peça que a OS
+// usou antes de chegar sai da lista "a pedir" e ganha o custo da nota.
 // ============================================================
 
 const incluirResumo = {
@@ -24,7 +36,13 @@ const incluirResumo = {
 
 const incluirCompleto = {
   ...incluirResumo,
-  itens: { include: { peca: { select: { nome: true, unidade: true } } }, orderBy: { id: 'asc' } },
+  itens: {
+    include: {
+      peca: { select: { nome: true, unidade: true } },
+      encomendas: { select: { encomenda: true, os: { select: { id: true, numero: true } } }, orderBy: { id: 'asc' } },
+    },
+    orderBy: { id: 'asc' },
+  },
 } satisfies Prisma.CompraInclude;
 
 type CompraResumo = Prisma.CompraGetPayload<{ include: typeof incluirResumo }>;
@@ -62,6 +80,7 @@ function paraDTO(c: CompraCompleta): CompraDTO {
         quantidade,
         custoUnit,
         subtotal: multiplicar(custoUnit, quantidade),
+        encomendas: i.encomendas.map((e) => ({ os: e.os, quantidade: num(e.encomenda) })),
       };
     }),
   };
@@ -155,8 +174,15 @@ export async function criar(dados: z.output<typeof compraSchema>, ator: UsuarioS
         compraId: compra.id,
         usuarioId: ator.id,
       });
-      await tx.compraItem.create({
+      const ci = await tx.compraItem.create({
         data: { compraId: compra.id, pecaId, quantidade: item.quantidade, custoUnit: item.custoUnit },
+      });
+      await atenderEncomendas(tx, {
+        pecaId,
+        quantidade: item.quantidade,
+        custoUnit: item.custoUnit,
+        compraItemId: ci.id,
+        fornecedorId: dados.fornecedorId,
       });
     }
 
@@ -176,6 +202,29 @@ export async function criar(dados: z.output<typeof compraSchema>, ator: UsuarioS
     return compra.id;
   });
   return buscar(id);
+}
+
+/**
+ * As peças encomendadas pelas OS que ainda não chegaram — a tela da compra
+ * usa para preencher a nota com o que foi pedido àquele distribuidor.
+ */
+export async function encomendasPendentes(ator: UsuarioSessao): Promise<EncomendaPendenteDTO[]> {
+  const linhas = await prisma.oSPeca.findMany({
+    where: encomendaPendente,
+    include: {
+      os: { select: { id: true, numero: true, carro: { select: { placa: true, modelo: true } } } },
+      peca: { include: { fornecedor: { select: { id: true, nome: true } } } },
+      pedidoFornecedor: { select: { id: true, nome: true } },
+    },
+    orderBy: [{ os: { numero: 'asc' } }, { id: 'asc' }],
+  });
+  return linhas.map((l) => ({
+    id: l.id,
+    os: { id: l.os.id, numero: l.os.numero, placa: l.os.carro.placa, modelo: l.os.carro.modelo },
+    peca: paraPecaDTO(l.peca, ator),
+    quantidade: num(l.encomenda),
+    pedido: l.pedidoFornecedor && l.pedidoEm ? { fornecedor: l.pedidoFornecedor, em: l.pedidoEm.toISOString() } : null,
+  }));
 }
 
 /** Quanto se deve a cada distribuidor (compras PENDENTE agrupadas). */
@@ -279,6 +328,8 @@ export async function excluir(id: string, ator: UsuarioSessao) {
         usuarioId: ator.id,
       });
     }
+    // A peça "não chegou": as encomendas que esta compra atendeu voltam para a lista.
+    await tx.oSPeca.updateMany({ where: { compraItem: { compraId: id } }, data: { compraItemId: null } });
     await tx.compra.delete({ where: { id } }); // itens saem por cascade
   });
 }

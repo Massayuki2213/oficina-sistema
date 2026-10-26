@@ -16,6 +16,9 @@ export const comprasRoutes: FastifyPluginAsyncZod = async (app) => {
   // GET /api/compras/a-pagar — quanto devo a cada distribuidor
   app.get('/a-pagar', { ...financeiro, schema: { tags } }, () => service.contasAPagar());
 
+  // GET /api/compras/encomendas — peças que as OS encomendaram e ainda não chegaram.
+  app.get('/encomendas', { schema: { tags } }, (req) => service.encomendasPendentes(req.usuario));
+
   app.get('/:id', { schema: { tags, params: idParams } }, (req) => service.buscar(req.params.id));
 
   // POST /api/compras — registra a compra e dá entrada no estoque.

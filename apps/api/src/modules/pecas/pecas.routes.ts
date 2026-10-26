@@ -7,6 +7,7 @@ import {
   idParams,
   listarPecasQuery,
   movimentosQuery,
+  pecaRapidaSchema,
   pecaSchema,
 } from '@hermes/shared/schemas';
 import { exigir } from '../../plugins/autenticacao.js';
@@ -32,6 +33,11 @@ export const pecasRoutes: FastifyPluginAsyncZod = async (app) => {
   // Cadastro mexe em custo → Dono.
   app.post('/', { onRequest: exigir('alterarPrecoCusto'), schema: { tags, body: criarPecaSchema } }, async (req, reply) =>
     reply.code(201).send(await service.criar(req.body, req.usuario)),
+  );
+  // POST /api/pecas/rapida — o balcão cadastra só o nome, no meio do orçamento.
+  // Sem custo e sem preço de venda: quem define é o Dono, pela nota.
+  app.post('/rapida', { onRequest: exigir('atender'), schema: { tags, body: pecaRapidaSchema } }, async (req, reply) =>
+    reply.code(201).send(await service.criarRapida(req.body, req.usuario)),
   );
   app.put('/:id', { onRequest: exigir('alterarPrecoCusto'), schema: { tags, params: idParams, body: pecaSchema } }, (req) =>
     service.atualizar(req.params.id, req.body, req.usuario),

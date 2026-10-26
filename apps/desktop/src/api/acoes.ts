@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query';
-import { brl, formatarQtd, type FaltaEstoqueDTO, type SituacaoFiadoDTO } from '@hermes/shared';
+import { brl, formatarQtd, type FaltaEstoqueDTO, type PrecoAConferirDTO, type SituacaoFiadoDTO } from '@hermes/shared';
 import { createElement } from 'react';
 import { ApiError, mensagemDeErro } from './http';
 import { useAvisos } from '../lib/avisos';
@@ -13,7 +13,8 @@ import { useAvisos } from '../lib/avisos';
 //
 // `useConfirmacoes` resolve de um jeito só os casos em que o servidor
 // responde "confirme e mande de novo": senha do Dono (RN-08), peça em
-// falta (RN-03), conflito de agenda (RN-19) e fiado bloqueado (RN-11.2).
+// falta e preço de peça ainda estimado (RN-03), conflito de agenda (RN-19)
+// e fiado bloqueado (RN-11.2).
 // ============================================================
 
 interface OpcoesAcao<R> {
@@ -47,6 +48,7 @@ export interface Extras {
   confirmarSemEstoque?: boolean;
   ignorarConflito?: boolean;
   liberarFiado?: boolean;
+  receberSemConferir?: boolean;
 }
 
 /** O usuário desistiu na confirmação. */
@@ -107,6 +109,27 @@ export function useConfirmacoes() {
             });
             if (!ok) throw new Desistiu();
             extras.confirmarSemEstoque = true;
+            continue;
+          }
+
+          if (e.codigo === 'PRECO_A_CONFERIR') {
+            const pecas = (e.detalhes as PrecoAConferirDTO[] | undefined) ?? [];
+            const ok = await avisos.confirmar({
+              titulo: 'Preço de peça ainda estimado',
+              mensagem: createElement(
+                'div',
+                null,
+                `${e.message} O certo é o Dono acertar o preço na OS antes. Receber assim mesmo fica registrado no histórico.`,
+                createElement(
+                  'ul',
+                  { className: 'mt-2 space-y-0.5' },
+                  pecas.map((p, i) => createElement('li', { key: i }, `${p.nome}: ${brl(p.precoUnit)} (estimado)`)),
+                ),
+              ),
+              botao: 'Receber assim mesmo',
+            });
+            if (!ok) throw new Desistiu();
+            extras.receberSemConferir = true;
             continue;
           }
 

@@ -95,7 +95,8 @@ export async function darEntrada(tx: Tx, pecaId: string, quantidade: number, cus
  * Saída (RN-01): baixa a quantidade. Pode deixar o saldo negativo — é a
  * peça encomendada (RN-03); quem chama decide se isso foi confirmado.
  * Devolve o custo médio do momento, que a OS/venda guarda como "custo da
- * peça vendida" (a margem do relatório não muda se a peça encarecer depois).
+ * peça vendida" (a margem do relatório não muda se a peça encarecer depois),
+ * e quanto desta saída não havia na prateleira — a parte a encomendar.
  */
 export async function darSaida(tx: Tx, pecaId: string, quantidade: number, origem: OrigemMovimento) {
   const p = await travar(tx, pecaId);
@@ -105,7 +106,9 @@ export async function darSaida(tx: Tx, pecaId: string, quantidade: number, orige
   await tx.movimentoEstoque.create({
     data: { pecaId, tipo: 'SAIDA', quantidade, saldoApos: saldo, custoUnit: p.custo, ...vinculos(origem) },
   });
-  return { saldo, custo: p.custo };
+  // Saldo que já era negativo é de outra encomenda: esta falta é toda desta saída.
+  const faltou = Math.min(quantidade, Math.max(0, -saldo));
+  return { saldo, custo: p.custo, faltou };
 }
 
 /** Devolve ao estoque o que tinha saído (OS cancelada, item removido, venda cancelada). Não mexe no custo. */

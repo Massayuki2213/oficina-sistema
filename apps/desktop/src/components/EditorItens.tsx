@@ -16,6 +16,7 @@ import { buscarPecas, buscarServicos } from '../api/catalogo';
 import { numeroParaTexto, textoParaNumero, valorParaCentavos } from '../lib/mascaras';
 import { BuscaSelect, InputDinheiro, InputQuantidade, Secao } from './ui';
 import FormServico from '../features/servicos/FormServico';
+import { PecaRapida } from '../features/estoque/PecaRapida';
 
 // ============================================================
 // Linhas de serviço e peça de um formulário (orçamento, OS nova,
@@ -41,6 +42,8 @@ export interface LinhaPeca {
   precoUnit: string;
   precoCatalogo: number;
   estoque: number;
+  /** Peça cadastrada só pelo nome: o preço da linha é estimado. */
+  precoADefinir?: boolean;
 }
 
 export interface Itens {
@@ -57,7 +60,9 @@ const preco = (l: { precoUnit: string }) => Number(l.precoUnit || 0);
 export function calcularTotais(itens: Itens, descontoTexto = '') {
   const linhas = [...itens.servicos, ...itens.pecas];
   const subtotal = somar(...linhas.map((l) => multiplicar(preco(l), qtd(l))));
-  const subtotalCatalogo = somar(...linhas.map((l) => multiplicar(l.precoCatalogo, qtd(l))));
+  // Item sem preço de tabela vale o combinado (o servidor conta do mesmo jeito).
+  const tabela = (l: LinhaServico | LinhaPeca) => (l.precoCatalogo === 0 || ('precoADefinir' in l && l.precoADefinir) ? preco(l) : l.precoCatalogo);
+  const subtotalCatalogo = somar(...linhas.map((l) => multiplicar(tabela(l), qtd(l))));
   const desconto = Math.min(valorParaCentavos(descontoTexto) / 100, subtotal);
   return { subtotal, subtotalCatalogo, desconto, total: subtrair(subtotal, desconto) };
 }
@@ -96,6 +101,7 @@ export function itensDoDTO(servicos: ItemServicoDTO[], pecas: ItemPecaDTO[]): It
       precoUnit: p.precoUnit.toFixed(2),
       precoCatalogo: p.precoCatalogo,
       estoque: p.estoqueAtual,
+      precoADefinir: p.precoADefinir,
     })),
   };
 }
@@ -111,6 +117,7 @@ export function EditorItens({
   onChange,
   podeAlterarPreco,
   podeCadastrarServico,
+  podeCadastrarPeca,
   comServicos = true,
   comPecas = true,
 }: {
@@ -118,10 +125,13 @@ export function EditorItens({
   onChange: (itens: Itens) => void;
   podeAlterarPreco: boolean;
   podeCadastrarServico?: boolean;
+  /** O balcão cadastra só o nome da peça que ainda não existe (orçamento e OS, não venda). */
+  podeCadastrarPeca?: boolean;
   comServicos?: boolean;
   comPecas?: boolean;
 }) {
   const [cadastrarServico, setCadastrarServico] = useState<string | null>(null);
+  const [cadastrarPeca, setCadastrarPeca] = useState<string | null>(null);
 
   function addServico(s: ServicoDTO) {
     if (valor.servicos.some((x) => x.servicoId === s.id)) return;
@@ -133,7 +143,8 @@ export function EditorItens({
       ],
     });
   }
-  function addPeca(p: PecaDTO) {
+  /** `estimado`: o preço da linha para a peça que acabou de ser cadastrada só pelo nome. */
+  function addPeca(p: PecaDTO, estimado?: number) {
     if (valor.pecas.some((x) => x.pecaId === p.id)) return;
     onChange({
       ...valor,
@@ -144,9 +155,10 @@ export function EditorItens({
           nome: p.nome,
           unidade: p.unidade,
           quantidade: '1',
-          precoUnit: p.precoVenda.toFixed(2),
+          precoUnit: (estimado ?? p.precoVenda).toFixed(2),
           precoCatalogo: p.precoVenda,
           estoque: p.estoqueAtual,
+          precoADefinir: p.precoADefinir,
         },
       ],
     });
@@ -227,6 +239,7 @@ export function EditorItens({
                   onPreco={(v) => mudarPeca(i, { precoUnit: v })}
                   onRemover={() => onChange({ ...valor, pecas: valor.pecas.filter((_, k) => k !== i) })}
                   aviso={falta ? `só ${formatarQtd(Math.max(0, l.estoque), l.unidade)} em estoque` : undefined}
+                  estimado={l.precoADefinir}
                 />
               );
             })}
@@ -239,16 +252,43 @@ export function EditorItens({
                 id={(p) => p.id}
                 rotulo={(p) => p.nome}
                 detalhe={(p) =>
-                  `${brl(p.precoVenda)} · ${formatarQtd(p.estoqueAtual, p.unidade)} em estoque${p.codigoBarras ? ` · ${p.codigoBarras}` : ''}`
+                  `${p.precoADefinir ? 'preço a definir' : brl(p.precoVenda)} · ${formatarQtd(p.estoqueAtual, p.unidade)} em estoque${p.codigoBarras ? ` · ${p.codigoBarras}` : ''}`
                 }
                 placeholder="+ Adicionar peça (nome, código ou bipe o leitor)"
                 onChange={(p) => p && addPeca(p)}
+                rodape={
+                  podeCadastrarPeca
+                    ? (termo, fechar) => (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            fechar();
+                            setCadastrarPeca(termo);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm font-bold text-laranja hover:bg-white inline-flex items-center gap-1.5"
+                        >
+                          <Plus size={14} /> Cadastrar peça nova{termo ? ` "${termo}"` : ''}
+                        </button>
+                      )
+                    : undefined
+                }
               />
             </div>
           </div>
         </Secao>
       )}
 
+      {cadastrarPeca !== null && (
+        <PecaRapida
+          nomeInicial={cadastrarPeca}
+          onFechar={() => setCadastrarPeca(null)}
+          onSalvo={(p, estimado) => {
+            setCadastrarPeca(null);
+            addPeca(p, estimado);
+          }}
+        />
+      )}
       {cadastrarServico !== null && (
         <FormServico
           servico={null}
@@ -276,6 +316,7 @@ function Linha({
   onPreco,
   onRemover,
   aviso,
+  estimado,
 }: {
   nome: string;
   unidade?: string;
@@ -288,20 +329,32 @@ function Linha({
   onPreco: (v: string) => void;
   onRemover: () => void;
   aviso?: string;
+  /** Peça sem preço de tabela: o preço da linha é uma estimativa. */
+  estimado?: boolean;
 }) {
   const subtotal = multiplicar(Number(precoUnit || 0), textoParaNumero(quantidade) ?? 0);
   const negociado = Number(precoUnit || 0) !== precoCatalogo;
+  const semPreco = podeAlterarPreco && Number(precoUnit || 0) === 0;
   return (
     <div className="flex items-center gap-2 sm:gap-3 px-3 py-2 border-b border-linha flex-wrap sm:flex-nowrap">
       <div className="flex-1 min-w-[10rem]">
         <div className="font-bold text-sm truncate">{nome}</div>
         <div className="text-xs text-grafite/50">
-          {negociado ? (
+          {estimado ? (
+            <span>preço estimado</span>
+          ) : precoCatalogo === 0 ? (
+            <span>preço combinado na hora</span>
+          ) : negociado ? (
             <span>
               tabela <s>{brl(precoCatalogo)}</s>
             </span>
           ) : (
             <span>{brl(precoCatalogo)} cada</span>
+          )}
+          {semPreco && (
+            <span className="text-amarelo font-bold inline-flex items-center gap-0.5 ml-1">
+              <AlertTriangle size={11} /> digite o preço
+            </span>
           )}
           {aviso && (
             <span className="text-amarelo font-bold inline-flex items-center gap-0.5 ml-1">

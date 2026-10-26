@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { PackagePlus, Plus, X } from 'lucide-react';
-import { FORMAS_SAIDA, LABEL_FORMA_PAGAMENTO, brl, multiplicar, somar, type CompraDTO, type FormaSaida, type FornecedorDTO, type PecaDTO } from '@hermes/shared';
+import { CheckSquare, PackagePlus, PackageSearch, Plus, Square, X } from 'lucide-react';
+import {
+  FORMAS_SAIDA,
+  LABEL_FORMA_PAGAMENTO,
+  brl,
+  formatarQtd,
+  multiplicar,
+  somar,
+  somarQtd,
+  type CompraDTO,
+  type EncomendaPendenteDTO,
+  type FormaSaida,
+  type FornecedorDTO,
+  type PecaDTO,
+} from '@hermes/shared';
 import { ApiError, http, mensagemDeErro } from '../../api/http';
 import { buscarPecas } from '../../api/catalogo';
 import { useAvisos } from '../../lib/avisos';
 import { daquiDias, hojeISO } from '../../lib/format';
-import { textoParaNumero } from '../../lib/mascaras';
+import { mascaraPlaca, numeroParaTexto, textoParaNumero } from '../../lib/mascaras';
 import { AreaTexto, BtnGhost, BtnPrimary, BuscaSelect, Campo, ErroFormulario, InputDinheiro, InputQuantidade, Modal, Selecao, inputCls } from '../../components/ui';
 import { FormFornecedor } from '../distribuidores/FormFornecedor';
 
@@ -130,6 +143,25 @@ export function NovaCompra({ onFechar, onCriada }: { onFechar: () => void; onCri
         </div>
 
         <div className="space-y-2">
+          <EncomendasDasOS
+            fornecedorId={fornecedorId}
+            onAdicionar={(escolhidas) =>
+              setLinhas((ls) => {
+                // A mesma peça encomendada por várias OS vira uma linha só: a nota traz o total.
+                const novas = [...ls];
+                for (const e of escolhidas) {
+                  const i = novas.findIndex((l) => l.peca?.id === e.peca.id);
+                  if (i >= 0) {
+                    novas[i] = { ...novas[i], quantidade: numeroParaTexto(somarQtd(textoParaNumero(novas[i].quantidade) ?? 0, e.quantidade)) };
+                  } else {
+                    const custo = e.peca.precoCusto ? e.peca.precoCusto.toFixed(2) : '';
+                    novas.push({ ...linhaVazia(), peca: e.peca, quantidade: numeroParaTexto(e.quantidade), custo });
+                  }
+                }
+                return novas;
+              })
+            }
+          />
           <div className="text-xs font-bold text-grafite/55">Itens</div>
           {linhas.map((l) => (
             <div key={l.chave} className="border border-linha rounded-xl p-2.5 space-y-2">
@@ -242,5 +274,84 @@ export function NovaCompra({ onFechar, onCriada }: { onFechar: () => void; onCri
       </Modal>
       {novoFornecedor && <FormFornecedor fornecedor={null} onFechar={() => setNovoFornecedor(false)} onSalvo={(f) => setFornecedorId(f.id)} />}
     </>
+  );
+}
+
+/**
+ * RN-03 — as peças que as OS encomendaram e ainda não chegaram. Começam
+ * marcadas as que foram pedidas a este distribuidor; adicionadas à nota,
+ * a compra atende as encomendas sozinha (a peça sai da lista da OS e fica
+ * com o custo desta nota).
+ */
+function EncomendasDasOS({ fornecedorId, onAdicionar }: { fornecedorId: string; onAdicionar: (e: EncomendaPendenteDTO[]) => void }) {
+  const consulta = useQuery({ queryKey: ['compras', 'encomendas'], queryFn: () => http.get<EncomendaPendenteDTO[]>('/compras/encomendas') });
+  const [adicionadas, setAdicionadas] = useState<Set<string>>(new Set());
+  const [marcadas, setMarcadas] = useState<Set<string> | null>(null);
+
+  const pendentes = (consulta.data ?? []).filter((e) => !adicionadas.has(e.id));
+  if (pendentes.length === 0) return null;
+
+  // Sem escolha do usuário, vale o padrão: as pedidas a este distribuidor.
+  const padrao = new Set(pendentes.filter((e) => e.pedido?.fornecedor.id === fornecedorId).map((e) => e.id));
+  const atuais = marcadas ?? padrao;
+  const escolhidas = pendentes.filter((e) => atuais.has(e.id));
+
+  const alternar = (id: string) =>
+    setMarcadas(() => {
+      const n = new Set(atuais);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  return (
+    <div className="border-[1.6px] border-amarelo/30 bg-amarelo-bg/40 rounded-xl p-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-bold text-petroleo inline-flex items-center gap-1.5">
+          <PackageSearch size={15} /> Peças encomendadas pelas OS ({pendentes.length})
+        </span>
+        <button
+          type="button"
+          disabled={escolhidas.length === 0}
+          onClick={() => {
+            onAdicionar(escolhidas);
+            setAdicionadas((a) => new Set([...a, ...escolhidas.map((e) => e.id)]));
+            setMarcadas(null);
+          }}
+          className="ml-auto text-sm font-bold text-laranja hover:underline disabled:text-grafite/30 disabled:no-underline inline-flex items-center gap-1"
+        >
+          <Plus size={14} /> Adicionar à compra ({escolhidas.length})
+        </button>
+      </div>
+      <div className="divide-y divide-linha/70 max-h-48 overflow-y-auto">
+        {pendentes.map((e) => {
+          const marcada = atuais.has(e.id);
+          return (
+            <button
+              key={e.id}
+              type="button"
+              role="checkbox"
+              aria-checked={marcada}
+              onClick={() => alternar(e.id)}
+              className="w-full flex items-start gap-2 py-1.5 text-left"
+            >
+              <span className={`mt-0.5 shrink-0 ${marcada ? 'text-laranja' : 'text-grafite/30'}`}>
+                {marcada ? <CheckSquare size={16} /> : <Square size={16} />}
+              </span>
+              <span className="flex-1 min-w-0 text-sm">
+                <span className="font-bold">
+                  {formatarQtd(e.quantidade, e.peca.unidade)} — {e.peca.nome}
+                </span>
+                <span className="block text-xs text-grafite/55">
+                  OS #{e.os.numero} · {e.os.modelo} {mascaraPlaca(e.os.placa)}
+                  {e.pedido ? ` · pedida a ${e.pedido.fornecedor.nome}` : ' · ainda não pedida'}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-grafite/55">Marque o que veio nesta nota. A peça sai da lista da OS e fica com o custo desta compra.</p>
+    </div>
   );
 }

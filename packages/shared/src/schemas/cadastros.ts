@@ -124,6 +124,16 @@ export type PecaInput = z.input<typeof pecaSchema>;
 export const criarPecaSchema = z.object({ ...pecaBase, estoqueInicial: quantidadeEstoque.default(0) });
 export type CriarPecaInput = z.input<typeof criarPecaSchema>;
 
+/**
+ * Peça que ainda não existe, cadastrada pelo balcão no meio do orçamento:
+ * só o nome. Custo e preço de venda ficam com o Dono, quando a nota chegar.
+ */
+export const pecaRapidaSchema = z.object({
+  nome: pecaBase.nome,
+  unidade: pecaBase.unidade,
+});
+export type PecaRapidaInput = z.input<typeof pecaRapidaSchema>;
+
 export const listarPecasQuery = paginacaoQuery.extend({
   baixo: booleanoQuery,
   fornecedorId: z.string().optional(),

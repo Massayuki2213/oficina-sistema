@@ -192,7 +192,7 @@ export function NovaOS({
         <AreaTexto value={defeito} onChange={(e) => setDefeito(e.target.value)} maxLength={1000} rows={2} />
       </Campo>
 
-      <EditorItens valor={itens} onChange={setItens} podeAlterarPreco={pode('darDesconto')} podeCadastrarServico={pode('atender')} />
+      <EditorItens valor={itens} onChange={setItens} podeAlterarPreco={pode('darDesconto')} podeCadastrarServico={pode('atender')} podeCadastrarPeca={pode('atender')} />
       {!temItens && <p className="text-xs text-grafite/50 -mt-1.5">Pode abrir sem itens (só o diagnóstico) e lançar os serviços e peças depois, na própria OS.</p>}
 
       {temItens && (

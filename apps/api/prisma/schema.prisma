@@ -249,6 +249,7 @@ model Fornecedor {
   pecas    Peca[]
   despesas Despesa[]
   compras  Compra[]
+  pedidos  OSPeca[]
 
   @@map("fornecedores")
 }
@@ -272,6 +273,9 @@ model Peca {
   unidade       String          @default("un")
   localizacao   String?
   ativo         Boolean         @default(true)
+  // Cadastrada pelo balcão só com o nome, para entrar no orçamento antes da
+  // nota da autopeça: o preço de venda ainda não vale. O Dono define depois.
+  precoADefinir Boolean         @default(false) @map("preco_a_definir")
 
   fornecedor     Fornecedor?        @relation(fields: [fornecedorId], references: [id])
   orcamentoItens OrcamentoPeca[]
@@ -421,12 +425,28 @@ model OSPeca {
   quantidade Decimal  @default(1) @db.Decimal(10, 3)
   precoUnit  Decimal  @map("preco_unit") @db.Decimal(10, 2)
   // Custo médio da peça no momento da baixa — a margem do relatório não
-  // muda depois porque a peça ficou mais cara.
+  // muda depois porque a peça ficou mais cara. Na encomenda, vira o custo
+  // da compra que trouxe a peça (o custo de antes não era o desta peça).
   custoUnit  Decimal? @map("custo_unit") @db.Decimal(10, 2)
 
-  os   OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
-  peca Peca         @relation(fields: [pecaId], references: [id])
+  // ---- Encomenda (RN-03): a parte da linha que faltou no estoque ----
+  // Quanto faltou ao lançar. Fica pendente até uma compra trazer.
+  encomenda          Decimal   @default(0) @db.Decimal(10, 3)
+  // A última autopeça para quem a lista foi mandada, e quando.
+  pedidoFornecedorId String?   @map("pedido_fornecedor_id")
+  pedidoEm           DateTime? @map("pedido_em")
+  // A compra que trouxe a encomenda. Preenchida = chegou.
+  compraItemId       String?   @map("compra_item_id")
+  // Encomenda e peça a definir entram com preço estimado: o Dono confere
+  // pela nota antes de receber o pagamento.
+  precoConferido     Boolean   @default(true) @map("preco_conferido")
 
+  os               OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+  peca             Peca         @relation(fields: [pecaId], references: [id])
+  pedidoFornecedor Fornecedor?  @relation(fields: [pedidoFornecedorId], references: [id], onDelete: SetNull)
+  compraItem       CompraItem?  @relation(fields: [compraItemId], references: [id], onDelete: SetNull)
+
+  @@index([pecaId, compraItemId])
   @@map("os_pecas")
 }
 
@@ -637,8 +657,10 @@ model CompraItem {
   quantidade Decimal @db.Decimal(10, 3)
   custoUnit  Decimal @map("custo_unit") @db.Decimal(10, 2)
 
-  compra Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
-  peca   Peca   @relation(fields: [pecaId], references: [id])
+  compra     Compra   @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  peca       Peca     @relation(fields: [pecaId], references: [id])
+  // As encomendas de OS que este item atendeu.
+  encomendas OSPeca[]
 
   @@index([compraId])
   @@map("compra_itens")

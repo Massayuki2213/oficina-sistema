@@ -2,6 +2,35 @@
 
 Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões: [SemVer](https://semver.org/lang/pt-BR/).
 
+## [Não lançado]
+
+Encomenda de peças, para a oficina que trabalha com pouco estoque: o cliente aprova o orçamento
+com o preço estimado da peça, o Dono pede à autopeça e acerta o preço pela nota.
+
+### Adicionado
+
+- **Pedir peças** na OS: a lista das peças que faltaram vai para a autopeça pelo WhatsApp, com os
+  dados do carro (placa, ano, chassi, combustível) e sem o preço do cliente. O que uma autopeça não
+  tiver é pedido a outra; cada peça mostra se está a pedir, pedida (a quem e quando) ou se chegou.
+- **Compra atende a encomenda**: a nota lançada em Compras tira a peça da lista da OS e passa o
+  custo da nota para ela (o lucro da OS fica certo). A compra mostra um quadro com as encomendas
+  pendentes para preencher a nota; apagar a compra devolve a encomenda para a lista.
+- **Peça a definir**: o balcão cadastra a peça só pelo nome, no meio do orçamento ou da OS, com um
+  preço estimado; o primeiro preço acertado pelo Dono vira o de tabela.
+- **Preço a conferir**: peça encomendada ou a definir entra com preço estimado; o Dono acerta pela
+  nota (ou marca "conferido"). Receber antes disso pede confirmação e fica no Histórico.
+- Orçamento no WhatsApp e impresso avisa quando o valor das peças é estimado; as observações do
+  orçamento passam a ir na mensagem.
+- **Catálogo inicial**: o Dono carrega, num clique, 60 serviços e 100 peças de uso comum, sem preço (mão
+  de obra digitada no orçamento, peça "a definir"). Aparece em Serviços e Estoque vazios e em
+  Configurações → Oficina; carregar de novo não duplica nada.
+
+### Alterado
+
+- Item sem preço de tabela (serviço com mão de obra zero, peça a definir) vale o preço combinado
+  no teto de desconto (RN-08) — senão ele encobriria desconto dado nos outros itens. A linha mostra
+  "preço combinado na hora" e avisa "digite o preço" enquanto estiver zerada.
+
 ## [1.0.0] — 2026-09-30
 
 Primeira versão para uso diário na oficina. Do protótipo (0.1) para a 1.0, o sistema foi

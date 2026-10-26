@@ -24,6 +24,11 @@ export const CODIGOS_ERRO = {
   CONFLITO_AGENDA: 'CONFLITO_AGENDA',
   /** RN-11.2: cliente com parcela vencida — confirme liberar o fiado (liberarFiado). */
   FIADO_BLOQUEADO: 'FIADO_BLOQUEADO',
+  /**
+   * RN-03: a OS tem peça com preço estimado que o Dono não conferiu pela nota —
+   * confirme receber assim mesmo (receberSemConferir). `detalhes`: PrecoAConferirDTO[].
+   */
+  PRECO_A_CONFERIR: 'PRECO_A_CONFERIR',
   /** Primeiro acesso já foi feito. */
   JA_CONFIGURADO: 'JA_CONFIGURADO',
   /**

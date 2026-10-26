@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Hourglass,
   KeyRound,
+  PackageCheck,
   PackageSearch,
   Pencil,
   Play,
@@ -65,6 +66,7 @@ import { ItensDaOS } from './ItensDaOS';
 import { ReceberOS } from './ReceberOS';
 import { FormEntradaOS } from './FormEntradaOS';
 import { AbrirGarantia } from './AbrirGarantia';
+import { PedirPecas } from './PedirPecas';
 
 // ============================================================
 // A OS aberta na tela: é aqui que o dia da oficina acontece.
@@ -73,7 +75,7 @@ import { AbrirGarantia } from './AbrirGarantia';
 // (e quando pode) usá-lo.
 // ============================================================
 
-type Janela = 'receber' | 'cancelar' | 'estornar' | 'garantia' | 'imprimir' | 'entrada' | null;
+type Janela = 'receber' | 'cancelar' | 'estornar' | 'garantia' | 'imprimir' | 'entrada' | 'pedir' | null;
 
 const ENCERRADAS: StatusOS[] = ['ENTREGUE', 'CANCELADA'];
 
@@ -124,6 +126,7 @@ export function DetalheOS({ id, onFechar, onAbrir }: { id: string; onFechar: () 
 
       {os && janela === 'receber' && <ReceberOS os={os} executar={acao.executar} onFechar={() => setJanela(null)} />}
       {os && janela === 'entrada' && <FormEntradaOS os={os} executar={acao.executar} onFechar={() => setJanela(null)} />}
+      {os && janela === 'pedir' && <PedirPecas os={os} executar={acao.executar} onFechar={() => setJanela(null)} />}
       {os && janela === 'garantia' && (
         <AbrirGarantia
           os={os}
@@ -298,6 +301,7 @@ function Corpo({ os, usuario, acao, abrir, onAbrir }: PropsParte & { onAbrir: (i
         />
       </div>
 
+      <AvisosDaEncomenda os={os} usuario={usuario} abrir={abrir} />
       <ItensDaOS os={os} usuario={usuario} executar={acao.executar} ocupado={acao.ocupado} />
 
       <div className="flex flex-col items-end gap-1 text-sm">
@@ -347,6 +351,52 @@ function Aviso({ cor, icone: Icone, children }: { cor: 'verde' | 'azul' | 'verme
       <Icone size={17} className="shrink-0" />
       {children}
     </div>
+  );
+}
+
+/**
+ * RN-03 — a peça encomendada: o que falta pedir à autopeça, o que já chegou
+ * e o preço estimado que o Dono ainda precisa acertar pela nota.
+ */
+function AvisosDaEncomenda({ os, usuario, abrir }: Pick<PropsParte, 'os' | 'usuario' | 'abrir'>) {
+  const p = usuario.permissoes;
+  if (!p.atender || os.status === 'CANCELADA') return null;
+
+  const aPedir = os.pecas.filter((x) => x.aPedir);
+  const semPedido = aPedir.filter((x) => !x.pedido).length;
+  const chegaram = os.status === 'AGUARDANDO_PECA' && aPedir.length === 0 && os.pecas.some((x) => x.chegou);
+  const aConferir = os.formaPagamento ? 0 : os.pecas.filter((x) => !x.precoConferido).length;
+
+  return (
+    <>
+      {aPedir.length > 0 && (
+        <Aviso cor="amarelo" icone={PackageSearch}>
+          {semPedido > 0
+            ? `${semPedido === 1 ? 'Uma peça' : `${semPedido} peças`} a pedir à autopeça.`
+            : `${aPedir.length === 1 ? 'A peça foi pedida' : `As ${aPedir.length} peças foram pedidas`} — esperando chegar.`}
+          {p.alterarPrecoCusto && (
+            <button type="button" onClick={() => abrir('pedir')} className="underline ml-auto">
+              {semPedido > 0 ? 'Pedir peças' : 'Pedir a outra autopeça'}
+            </button>
+          )}
+        </Aviso>
+      )}
+      {chegaram && (
+        <Aviso cor="verde" icone={PackageCheck}>
+          As peças encomendadas chegaram. Clique em "Retomar serviço".
+        </Aviso>
+      )}
+      {aConferir > 0 && (
+        <Aviso cor="amarelo" icone={AlertTriangle}>
+          {aConferir === 1 ? 'Uma peça está' : `${aConferir} peças estão`} com preço estimado.
+          <span className="font-normal">
+            {p.alterarPrecoCusto
+              ? 'Acerte o preço pela nota da autopeça (ou marque "conferido") antes de receber.'
+              : 'O Dono confere o preço pela nota antes de receber.'}
+          </span>
+        </Aviso>
+      )}
+    </>
   );
 }
 

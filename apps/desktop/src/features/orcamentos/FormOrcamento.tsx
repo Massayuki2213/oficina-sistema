@@ -191,7 +191,7 @@ export function FormOrcamento({
         />
       )}
 
-      <EditorItens valor={itens} onChange={setItens} podeAlterarPreco={pode('darDesconto')} podeCadastrarServico={pode('atender')} />
+      <EditorItens valor={itens} onChange={setItens} podeAlterarPreco={pode('darDesconto')} podeCadastrarServico={pode('atender')} podeCadastrarPeca={pode('atender')} />
       {erros.itens && <p className="text-vermelho text-xs font-semibold -mt-1.5">{erros.itens}</p>}
 
       <div className="grid sm:grid-cols-[1fr_auto_auto] gap-3 items-start">

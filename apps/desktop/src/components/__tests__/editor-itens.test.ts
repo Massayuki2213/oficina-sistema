@@ -29,6 +29,17 @@ describe('editor de itens', () => {
     ]);
   });
 
+  it('item sem preço de tabela vale o combinado, e o combinado vai para o servidor', () => {
+    const semTabela: Itens = {
+      servicos: [{ servicoId: 's2', nome: 'Mão de obra avulsa', quantidade: '1', precoUnit: '250.00', precoCatalogo: 0 }],
+      pecas: [{ pecaId: 'p3', nome: 'Bomba', unidade: 'un', quantidade: '1', precoUnit: '380.00', precoCatalogo: 0, estoque: 0, precoADefinir: true }],
+    };
+    expect(calcularTotais(semTabela).subtotalCatalogo).toBe(630);
+    const envio = itensParaEnvio(semTabela);
+    expect(envio.servicos[0].precoUnit).toBe(250);
+    expect(envio.pecas[0].precoUnit).toBe(380);
+  });
+
   it('não deixa enviar vazio nem com quantidade zerada', () => {
     expect(itensInvalidos({ servicos: [], pecas: [] })).toMatch(/ao menos 1/);
     expect(itensInvalidos({ ...itens, pecas: [{ ...itens.pecas[0], quantidade: '0' }] })).toMatch(/zerada/);

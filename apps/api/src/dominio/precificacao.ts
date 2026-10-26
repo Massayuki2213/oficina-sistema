@@ -94,8 +94,9 @@ export async function precificar(
   const servicosOut = entrada.servicos.map((s): ServicoPrecificado => {
     const cat = servPorId.get(s.servicoId);
     if (!cat || !cat.ativo) throw invalido('Um dos serviços não está mais no catálogo. Remova-o e escolha de novo.');
-    const precoCatalogo = num(cat.precoMaoDeObra);
-    const precoUnit = precoCombinado(precoCatalogo, s.precoUnit);
+    const precoUnit = precoCombinado(num(cat.precoMaoDeObra), s.precoUnit);
+    // Serviço sem preço de tabela (mão de obra combinada na hora) vale o combinado (RN-08).
+    const precoCatalogo = num(cat.precoMaoDeObra) === 0 ? precoUnit : num(cat.precoMaoDeObra);
     return {
       servicoId: cat.id,
       nome: cat.nome,
@@ -109,8 +110,10 @@ export async function precificar(
   const pecasOut = entrada.pecas.map((p): PecaPrecificada => {
     const cat = pecaPorId.get(p.pecaId);
     if (!cat || !cat.ativo) throw invalido('Uma das peças não está mais no estoque. Remova-a e escolha de novo.');
-    const precoCatalogo = num(cat.precoVenda);
-    const precoUnit = precoCombinado(precoCatalogo, p.precoUnit);
+    const precoUnit = precoCombinado(num(cat.precoVenda), p.precoUnit);
+    // Peça sem preço de tabela vale o estimado: senão o "acima da tabela" dela
+    // encobriria desconto dado nos outros itens (RN-08).
+    const precoCatalogo = cat.precoADefinir || num(cat.precoVenda) === 0 ? precoUnit : num(cat.precoVenda);
     return {
       pecaId: cat.id,
       nome: cat.nome,

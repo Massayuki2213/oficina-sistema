@@ -1,4 +1,14 @@
-import type { OficinaDTO, OrcamentoDTO, OrdemServicoDTO, ParcelaDTO, RevisaoVencidaDTO, VisitaDTO } from '@hermes/shared';
+import type {
+  FornecedorDTO,
+  ItemPecaDTO,
+  ItemPecaOSDTO,
+  OficinaDTO,
+  OrcamentoDTO,
+  OrdemServicoDTO,
+  ParcelaDTO,
+  RevisaoVencidaDTO,
+  VisitaDTO,
+} from '@hermes/shared';
 import { brl, formatarQtd, soDigitos } from '@hermes/shared';
 import { dataBR, horaBR } from './format';
 import { mascaraPlaca } from './mascaras';
@@ -17,8 +27,20 @@ export function linkWhatsApp(telefone: string | null | undefined, texto: string)
   return `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
 }
 
-const primeiroNome = (nome: string) => nome.split(' ')[0];
+/** "Maria Souza" → "Maria"; "Sr. Almeida" → "Sr. Almeida" (o tratamento vai com o nome). */
+const primeiroNome = (nome: string) => {
+  const [primeira, segunda] = nome.trim().split(/\s+/);
+  return primeira.endsWith('.') && segunda ? `${primeira} ${segunda}` : primeira;
+};
 const veiculo = (c: { modelo: string; placa: string } | null | undefined) => (c ? `${c.modelo} (${mascaraPlaca(c.placa)})` : 'veículo');
+
+/**
+ * A peça ainda vai ser comprada (falta no estoque) ou nem tem preço de
+ * tabela: o valor dela no orçamento é estimado, e o certo vem da nota.
+ */
+export const precoEstimado = (p: ItemPecaDTO) => p.precoADefinir || p.estoqueAtual < p.quantidade;
+
+export const AVISO_PRECO_ESTIMADO = 'O valor das peças é estimado: pode mudar conforme a nota da autopeça.';
 
 export const mensagens = {
   orcamento(o: OrcamentoDTO, oficina: OficinaDTO) {
@@ -36,8 +58,30 @@ export const mensagens = {
       '',
       ...(o.desconto > 0 ? [`Desconto: −${brl(o.desconto)}`] : []),
       `*Total: ${brl(o.total)}* (válido até ${dataBR(o.validade)}).`,
+      ...(o.pecas.some(precoEstimado) ? [AVISO_PRECO_ESTIMADO] : []),
+      ...(o.observacoes ? ['', o.observacoes] : []),
       '',
       'Qualquer dúvida é só chamar. Para aprovar, responda esta mensagem.',
+    ].join('\n');
+  },
+
+  /**
+   * A lista das peças encomendadas para a autopeça: só o que falta, com os
+   * dados do carro que ela pede para achar a peça certa — e sem o preço que
+   * a oficina cobra do cliente.
+   */
+  pedidoPecas(os: OrdemServicoDTO, itens: ItemPecaOSDTO[], fornecedor: Pick<FornecedorDTO, 'contato'>, oficina: OficinaDTO) {
+    const c = os.carro;
+    return [
+      `Olá${fornecedor.contato ? `, ${primeiroNome(fornecedor.contato)}` : ''}! Aqui é da ${oficina.nome}. Preciso destas peças:`,
+      '',
+      `Veículo: ${[c.marca, c.modelo, c.ano].filter(Boolean).join(' ')} — placa ${mascaraPlaca(c.placa)}`,
+      ...(c.chassi ? [`Chassi: ${c.chassi}`] : []),
+      ...(c.combustivel ? [`Combustível: ${c.combustivel}`] : []),
+      '',
+      ...itens.map((p) => `• ${formatarQtd(p.encomenda, p.unidade)} — ${p.nome}${p.codigo ? ` (cód. ${p.codigo})` : ''}`),
+      '',
+      'Tem disponível? Me passa o valor e o prazo, por favor.',
     ].join('\n');
   },
 

@@ -12,6 +12,7 @@ import {
 } from '@hermes/shared';
 import { useOficina } from '../api/catalogo';
 import { dataBR, dataHoraBR, formatarDocumento, formatarPlaca, formatarTelefone } from '../lib/format';
+import { AVISO_PRECO_ESTIMADO, precoEstimado } from '../lib/whatsapp';
 
 // ============================================================
 // Documento para imprimir ou salvar em PDF (orçamento e OS).
@@ -201,6 +202,7 @@ export function OrcamentoDoc({ orc }: { orc: OrcamentoDTO }) {
       <Texto titulo="Observações">{orc.observacoes}</Texto>
       <div className="mt-4 text-[11px] text-grafite/55">
         Orçamento válido até {dataBR(orc.validade)}. Valores podem mudar após a verificação do veículo, sempre com a sua aprovação.
+        {orc.pecas.some(precoEstimado) && ` ${AVISO_PRECO_ESTIMADO}`}
       </div>
       <Rodape assinatura="Aprovação do cliente" />
     </>

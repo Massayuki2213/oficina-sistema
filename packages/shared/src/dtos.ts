@@ -256,6 +256,8 @@ export interface PecaDTO {
   ativo: boolean;
   /** RN-02: no mínimo ou abaixo dele. */
   estoqueBaixo: boolean;
+  /** Cadastrada pelo balcão só com o nome: o Dono ainda define o preço. */
+  precoADefinir: boolean;
 }
 
 export interface MovimentoEstoqueDTO {
@@ -317,6 +319,24 @@ export interface ItemPecaDTO {
   subtotal: number;
   /** Saldo atual da peça (para o aviso "só 2 em estoque"). */
   estoqueAtual: number;
+  /** Código interno (SKU) — vai na lista para a autopeça. */
+  codigo: string | null;
+  /** Peça cadastrada só pelo nome: o preço da linha é estimado. */
+  precoADefinir: boolean;
+}
+
+/** Linha de peça da OS: além do item, a encomenda à autopeça (RN-03). */
+export interface ItemPecaOSDTO extends ItemPecaDTO {
+  /** Quanto faltou no estoque ao lançar (0 = saiu da prateleira). */
+  encomenda: number;
+  /** Encomenda que ainda não chegou: entra na lista "pedir peças". */
+  aPedir: boolean;
+  /** Para quem a lista foi mandada por último. */
+  pedido: { fornecedor: { id: ID; nome: string }; em: ISODate } | null;
+  /** A compra que trouxe a encomenda. */
+  chegou: { compra: Ref; fornecedor: string; numeroNota: string | null; data: ISODate } | null;
+  /** false = preço estimado, o Dono ainda não conferiu pela nota. */
+  precoConferido: boolean;
 }
 
 // ---- Orçamento -------------------------------------------------------------
@@ -393,6 +413,9 @@ export interface OrdemServicoDTO extends Omit<OSResumoDTO, 'cliente' | 'carro'> 
     ano: number | null;
     cor: string | null;
     kmAtual: number | null;
+    /** Vão na lista de peças para a autopeça. */
+    chassi: string | null;
+    combustivel: string | null;
   };
   orcamento: Ref | null;
   /** RN-18: esta OS é garantia DAQUELA. */
@@ -409,7 +432,7 @@ export interface OrdemServicoDTO extends Omit<OSResumoDTO, 'cliente' | 'carro'> 
   subtotal: number;
   desconto: number;
   servicos: ItemServicoDTO[];
-  pecas: ItemPecaDTO[];
+  pecas: ItemPecaOSDTO[];
   /** Quanto já entrou no caixa por esta OS (líquido de estornos). */
   recebido: number;
   /** Quanto ainda falta receber (parcelas pendentes). */
@@ -596,7 +619,39 @@ export interface CompraResumoDTO {
 export interface CompraDTO extends CompraResumoDTO {
   observacoes: string | null;
   formaPagamento: FormaPagamento | null;
-  itens: { id: ID; pecaId: ID; nome: string; unidade: string; quantidade: number; custoUnit: number; subtotal: number }[];
+  itens: {
+    id: ID;
+    pecaId: ID;
+    nome: string;
+    unidade: string;
+    quantidade: number;
+    custoUnit: number;
+    subtotal: number;
+    /** As encomendas de OS que este item atendeu. */
+    encomendas: { os: Ref; quantidade: number }[];
+  }[];
+}
+
+/** Peça encomendada para uma OS que ainda não chegou — a lista da compra. */
+export interface EncomendaPendenteDTO {
+  /** A linha da OS. */
+  id: ID;
+  os: Ref & { placa: string; modelo: string };
+  peca: PecaDTO;
+  quantidade: number;
+  pedido: { fornecedor: { id: ID; nome: string }; em: ISODate } | null;
+}
+
+/** O que o "carregar catálogo inicial" pôs no catálogo (e o que já estava lá). */
+export interface CatalogoInicialDTO {
+  servicos: { criados: number; jaExistiam: number };
+  pecas: { criados: number; jaExistiam: number };
+}
+
+/** RN-03: peças com preço estimado que o Dono ainda não conferiu (detalhes do erro PRECO_A_CONFERIR). */
+export interface PrecoAConferirDTO {
+  nome: string;
+  precoUnit: number;
 }
 
 export interface ListaComprasDTO extends Pagina<CompraResumoDTO> {

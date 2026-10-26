@@ -14,6 +14,7 @@ import {
   itemParams,
   listarOSQuery,
   mudarStatusOSSchema,
+  pedirPecasSchema,
   receberOSSchema,
 } from '@hermes/shared/schemas';
 import { exigir } from '../../plugins/autenticacao.js';
@@ -70,6 +71,14 @@ export const ordensRoutes: FastifyPluginAsyncZod = async (app) => {
     '/:id/pecas/:itemId',
     { schema: { tags, params: itemParams }, config: { acao: 'REMOVER_PECA' } },
     (req) => service.removerPeca(req.params.id, req.params.itemId, req.usuario),
+  );
+
+  // POST /api/ordens/:id/pedir-pecas — a lista de encomendas foi mandada a uma autopeça.
+  // Quem compra peça é o Dono (o mesmo de Compras e Distribuidores).
+  app.post(
+    '/:id/pedir-pecas',
+    { onRequest: exigir('alterarPrecoCusto'), schema: { tags, params: idParams, body: pedirPecasSchema }, config: { acao: 'PEDIR_PECAS' } },
+    (req) => service.pedirPecas(req.params.id, req.body, req.usuario),
   );
 
   // ---- Fluxo ----

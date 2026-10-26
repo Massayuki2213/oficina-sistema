@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import type { ItemPecaDTO, ItemServicoDTO, OSResumoDTO, StatusOS } from '@hermes/shared';
+import type { ItemPecaDTO, ItemPecaOSDTO, ItemServicoDTO, OSResumoDTO, StatusOS } from '@hermes/shared';
 import { STATUS_OS_ABERTOS } from '@hermes/shared';
 import { multiplicar, num } from '../../lib/dinheiro.js';
 import { isoOuNull } from '../../lib/datas.js';
@@ -48,21 +48,39 @@ type LinhaServico = {
   servico: { nome: string; precoMaoDeObra: Prisma.Decimal };
 };
 
+/** O que toda linha de peça (orçamento, OS, venda) precisa saber da peça. */
+export const selecaoPecaDoItem = {
+  select: { nome: true, unidade: true, sku: true, precoVenda: true, precoADefinir: true, estoqueAtual: true },
+} as const;
+
 type LinhaPeca = {
   id: string;
   pecaId: string;
   quantidade: Prisma.Decimal;
   precoUnit: Prisma.Decimal;
-  peca: { nome: string; unidade: string; precoVenda: Prisma.Decimal; estoqueAtual: Prisma.Decimal };
+  peca: Prisma.PecaGetPayload<typeof selecaoPecaDoItem>;
 };
 
 export const incluirItens = {
   servicos: { include: { servico: { select: { nome: true, precoMaoDeObra: true } } }, orderBy: { id: 'asc' } },
+  pecas: { include: { peca: selecaoPecaDoItem }, orderBy: { id: 'asc' } },
+} as const;
+
+/** Na OS, a linha de peça traz também a encomenda: para quem foi pedida e que compra trouxe. */
+export const incluirPecasDaOS = {
   pecas: {
-    include: { peca: { select: { nome: true, unidade: true, precoVenda: true, estoqueAtual: true } } },
+    include: {
+      peca: selecaoPecaDoItem,
+      pedidoFornecedor: { select: { id: true, nome: true } },
+      compraItem: {
+        select: { compra: { select: { id: true, numero: true, numeroNota: true, data: true, fornecedor: { select: { nome: true } } } } },
+      },
+    },
     orderBy: { id: 'asc' },
   },
 } as const;
+
+type LinhaPecaOS = Prisma.OSPecaGetPayload<(typeof incluirPecasDaOS)['pecas']>;
 
 export function paraItemServico(s: LinhaServico): ItemServicoDTO {
   const precoUnit = num(s.precoUnit);
@@ -91,5 +109,27 @@ export function paraItemPeca(p: LinhaPeca): ItemPecaDTO {
     precoCatalogo: num(p.peca.precoVenda),
     subtotal: multiplicar(precoUnit, quantidade),
     estoqueAtual: num(p.peca.estoqueAtual),
+    codigo: p.peca.sku,
+    precoADefinir: p.peca.precoADefinir,
+  };
+}
+
+/** `osCancelada`: a OS devolveu as peças ao estoque — nada mais a pedir. */
+export function paraItemPecaOS(p: LinhaPecaOS, osCancelada = false): ItemPecaOSDTO {
+  const compra = p.compraItem?.compra;
+  return {
+    ...paraItemPeca(p),
+    encomenda: num(p.encomenda),
+    aPedir: !osCancelada && num(p.encomenda) > 0 && !p.compraItemId,
+    pedido: p.pedidoFornecedor && p.pedidoEm ? { fornecedor: p.pedidoFornecedor, em: p.pedidoEm.toISOString() } : null,
+    chegou: compra
+      ? {
+          compra: { id: compra.id, numero: compra.numero },
+          fornecedor: compra.fornecedor.nome,
+          numeroNota: compra.numeroNota,
+          data: compra.data.toISOString(),
+        }
+      : null,
+    precoConferido: p.precoConferido,
   };
 }

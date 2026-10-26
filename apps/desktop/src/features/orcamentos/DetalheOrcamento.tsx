@@ -323,7 +323,7 @@ function Linha({
         <div className="font-bold truncate">{nome}</div>
         <div className="text-xs text-grafite/50">
           {tipo} · {brl(unit)}
-          {unit !== catalogo && <span> (tabela {brl(catalogo)})</span>}
+          {unit !== catalogo && catalogo > 0 && <span> (tabela {brl(catalogo)})</span>}
           {aviso && (
             <span className="text-amarelo font-bold inline-flex items-center gap-0.5 ml-1.5">
               <AlertTriangle size={11} /> {aviso}

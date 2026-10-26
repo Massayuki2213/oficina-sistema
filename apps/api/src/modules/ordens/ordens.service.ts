@@ -9,6 +9,7 @@ import {
   type OrdemServicoDTO,
   type OSResumoDTO,
   type Pagina,
+  type PrecoAConferirDTO,
   type SituacaoGarantiaDTO,
   type UsuarioSessao,
 } from '@hermes/shared';
@@ -22,6 +23,7 @@ import type {
   criarOSSchema,
   listarOSQuery,
   mudarStatusOSSchema,
+  pedirPecasSchema,
   receberOSSchema,
 } from '@hermes/shared/schemas';
 import { prisma } from '../../lib/prisma.js';
@@ -31,12 +33,13 @@ import { brl, multiplicar, num, somar, somarQtd, subtrair } from '../../lib/dinh
 import { adicionarDias, diasEntre, hojeISO, isoOuNull } from '../../lib/datas.js';
 import { pagina, paginar, termoCompacto } from '../../lib/paginacao.js';
 import { conferirTetoDeDesconto, fecharTotal, precificar } from '../../dominio/precificacao.js';
-import { darSaida, devolver, verificarFaltas } from '../../dominio/estoque.js';
+import { calcularMargem, darSaida, devolver, verificarFaltas } from '../../dominio/estoque.js';
+import { encomendaPendente } from '../../dominio/encomendas.js';
 import { lancar } from '../../dominio/caixa.js';
 import { gerarParcelas, situacaoFiado } from '../../dominio/fiado.js';
 import { getOficina } from '../oficina/oficina.service.js';
 import { incluirParcela, paraParcela } from '../contas/contas.mapper.js';
-import { incluirItens, incluirOSResumo, paraItemPeca, paraItemServico, paraOSResumo } from './ordens.mapper.js';
+import { incluirItens, incluirOSResumo, incluirPecasDaOS, paraItemPecaOS, paraItemServico, paraOSResumo } from './ordens.mapper.js';
 
 // ============================================================
 // Ordem de Serviço — o coração da oficina.
@@ -59,14 +62,17 @@ type Tx = Prisma.TransactionClient;
 
 const incluirCompleto = {
   cliente: { select: { id: true, nome: true, telefone: true, whatsapp: true, cpfCnpj: true } },
-  carro: { select: { id: true, placa: true, marca: true, modelo: true, ano: true, cor: true, kmAtual: true } },
+  carro: {
+    select: { id: true, placa: true, marca: true, modelo: true, ano: true, cor: true, kmAtual: true, chassi: true, combustivel: true },
+  },
   mecanico: { select: { id: true, nome: true } },
   orcamento: { select: { id: true, numero: true } },
   osOrigem: { select: { id: true, numero: true } },
   garantias: { select: { id: true, numero: true } },
   lancamentos: { orderBy: { data: 'asc' } },
   contasReceber: { orderBy: { parcela: 'asc' }, include: incluirParcela },
-  ...incluirItens,
+  servicos: incluirItens.servicos,
+  ...incluirPecasDaOS,
 } satisfies Prisma.OrdemServicoInclude;
 
 type OSCompleta = Prisma.OrdemServicoGetPayload<{ include: typeof incluirCompleto }>;
@@ -102,7 +108,7 @@ function paraDTO(o: OSCompleta, ator: UsuarioSessao): OrdemServicoDTO {
     subtotal: num(o.subtotal),
     desconto: num(o.desconto),
     servicos: o.servicos.map(paraItemServico),
-    pecas: o.pecas.map(paraItemPeca),
+    pecas: o.pecas.map((p) => paraItemPecaOS(p, o.status === 'CANCELADA')),
     recebido: subtrair(somar(...entradas.map((l) => num(l.valor))), somar(...estornos.map((l) => num(l.valor)))),
     aReceber: somar(...parcelas.filter((p) => p.status === 'PENDENTE').map((p) => p.saldo)),
     pagamentos: financeiro
@@ -195,15 +201,37 @@ export async function abrirOS(tx: Tx, a: AberturaOS) {
     },
   });
 
-  for (const p of a.pecas) {
-    const { custo } = await darSaida(tx, p.pecaId, p.quantidade, { motivo: `OS #${os.numero}`, osId: os.id, usuarioId: a.usuarioId });
-    await tx.oSPeca.create({
-      data: { osId: os.id, pecaId: p.pecaId, quantidade: p.quantidade, precoUnit: p.precoUnit, custoUnit: custo },
-    });
-  }
+  for (const p of a.pecas) await lancarPeca(tx, os, p, a.usuarioId);
 
   await atualizarKm(tx, a.carroId, a.kmEntrada);
   return os;
+}
+
+/**
+ * Põe a peça na OS: baixa o estoque (RN-01) e anota quanto faltou, que é o
+ * que vai para a lista da autopeça (RN-03). Peça que ainda vai ser comprada,
+ * ou que nem tem preço de tabela, entra com preço estimado: o Dono confere
+ * pela nota antes de receber.
+ */
+async function lancarPeca(
+  tx: Tx,
+  os: { id: string; numero: number },
+  p: { pecaId: string; quantidade: number; precoUnit: number },
+  usuarioId: string,
+) {
+  const { custo, faltou } = await darSaida(tx, p.pecaId, p.quantidade, { motivo: `OS #${os.numero}`, osId: os.id, usuarioId });
+  const { precoADefinir } = await tx.peca.findUniqueOrThrow({ where: { id: p.pecaId }, select: { precoADefinir: true } });
+  await tx.oSPeca.create({
+    data: {
+      osId: os.id,
+      pecaId: p.pecaId,
+      quantidade: p.quantidade,
+      precoUnit: p.precoUnit,
+      custoUnit: custo,
+      encomenda: faltou,
+      precoConferido: faltou === 0 && !precoADefinir,
+    },
+  });
 }
 
 // ---- Consulta --------------------------------------------------------------
@@ -319,16 +347,20 @@ async function recalcular(
 ) {
   const [servicos, pecas] = await Promise.all([
     tx.oSServico.findMany({ where: { osId: os.id }, include: { servico: { select: { precoMaoDeObra: true } } } }),
-    tx.oSPeca.findMany({ where: { osId: os.id }, include: { peca: { select: { precoVenda: true } } } }),
+    tx.oSPeca.findMany({ where: { osId: os.id }, include: { peca: { select: { precoVenda: true, precoADefinir: true } } } }),
   ]);
 
   const subtotal = somar(
     ...servicos.map((s) => multiplicar(num(s.precoUnit), s.quantidade)),
     ...pecas.map((p) => multiplicar(num(p.precoUnit), num(p.quantidade))),
   );
+  // Item sem preço de tabela vale o combinado: senão o "acima da tabela" dele
+  // encobriria desconto dado nos outros itens.
+  const tabela = (catalogo: Prisma.Decimal, combinado: Prisma.Decimal, aDefinir = false) =>
+    aDefinir || num(catalogo) === 0 ? num(combinado) : num(catalogo);
   const subtotalCatalogo = somar(
-    ...servicos.map((s) => multiplicar(num(s.servico.precoMaoDeObra), s.quantidade)),
-    ...pecas.map((p) => multiplicar(num(p.peca.precoVenda), num(p.quantidade))),
+    ...servicos.map((s) => multiplicar(tabela(s.servico.precoMaoDeObra, s.precoUnit), s.quantidade)),
+    ...pecas.map((p) => multiplicar(tabela(p.peca.precoVenda, p.precoUnit, p.peca.precoADefinir), num(p.quantidade))),
   );
   const desconto = Math.min(opcoes.desconto ?? num(os.desconto), subtotal);
   const total = subtrair(subtotal, desconto);
@@ -488,10 +520,7 @@ export async function adicionarPeca(id: string, dados: z.output<typeof adicionar
     const faltas = await verificarFaltas(tx, [p]);
     if (faltas.length > 0 && !dados.confirmarSemEstoque) throw faltaDeEstoque(faltas);
 
-    const { custo } = await darSaida(tx, p.pecaId, p.quantidade, { motivo: `OS #${os.numero}`, osId: id, usuarioId: ator.id });
-    await tx.oSPeca.create({
-      data: { osId: id, pecaId: p.pecaId, quantidade: p.quantidade, precoUnit: p.precoUnit, custoUnit: custo },
-    });
+    await lancarPeca(tx, os, p, ator.id);
     if (faltas.length > 0) await marcarAguardandoPeca(tx, os);
     await recalcular(tx, os, { ator, conferirTeto: dados.precoUnit !== undefined, senhaDono: dados.senhaDono });
   });
@@ -504,27 +533,55 @@ export async function alterarPeca(id: string, itemId: string, dados: z.output<ty
     const item = await tx.oSPeca.findFirst({ where: { id: itemId, osId: id }, include: { peca: true } });
     if (!item) throw naoEncontrado('Peça não encontrada nesta OS');
     conferirPrecoInformado(dados.precoUnit, num(item.peca.precoVenda), ator);
+    if (dados.conferirPreco && !ator.permissoes.alterarPrecoCusto) throw semPermissao('Quem confere o preço pela nota é o Dono.');
 
-    // Mudou a quantidade: só a diferença mexe no estoque.
+    let encomenda = num(item.encomenda);
+    let compraItemId = item.compraItemId;
+    let precoConferido = item.precoConferido;
+
+    // Mudou a quantidade: só a diferença mexe no estoque — e na encomenda.
     if (dados.quantidade !== undefined) {
       const diferenca = somarQtd(dados.quantidade, -num(item.quantidade));
       if (diferenca > 0) {
         const faltas = await verificarFaltas(tx, [{ pecaId: item.pecaId, quantidade: diferenca }]);
         if (faltas.length > 0 && !dados.confirmarSemEstoque) throw faltaDeEstoque(faltas);
-        await darSaida(tx, item.pecaId, diferenca, { motivo: `OS #${os.numero}`, osId: id, usuarioId: ator.id });
+        const { faltou } = await darSaida(tx, item.pecaId, diferenca, { motivo: `OS #${os.numero}`, osId: id, usuarioId: ator.id });
+        if (faltou > 0) {
+          // A encomenda que já chegou fica para trás: o que falta agora é um pedido novo.
+          encomenda = compraItemId ? faltou : somarQtd(encomenda, faltou);
+          compraItemId = null;
+          precoConferido = false;
+        }
         if (faltas.length > 0) await marcarAguardandoPeca(tx, os);
       } else if (diferenca < 0) {
         await devolver(tx, item.pecaId, -diferenca, { motivo: `Devolução — OS #${os.numero}`, osId: id, usuarioId: ator.id });
+        encomenda = Math.max(0, somarQtd(encomenda, diferenca));
       }
     }
+
+    // O Dono acertou o preço pela nota (ou conferiu que o estimado vale).
+    const acertoDoDono = ator.permissoes.alterarPrecoCusto && (dados.precoUnit !== undefined || !!dados.conferirPreco);
+    if (acertoDoDono) precoConferido = true;
 
     await tx.oSPeca.update({
       where: { id: itemId },
       data: {
         ...(dados.quantidade !== undefined ? { quantidade: dados.quantidade } : {}),
         ...(dados.precoUnit !== undefined ? { precoUnit: dados.precoUnit } : {}),
+        encomenda,
+        compraItemId,
+        precoConferido,
       },
     });
+
+    // Peça cadastrada só pelo nome: o primeiro preço acertado pelo Dono vira o de tabela.
+    if (acertoDoDono && item.peca.precoADefinir) {
+      const precoVenda = dados.precoUnit ?? num(item.precoUnit);
+      await tx.peca.update({
+        where: { id: item.pecaId },
+        data: { precoVenda, precoADefinir: false, margemPct: calcularMargem(num(item.peca.precoCusto), precoVenda), ...proximaVersao },
+      });
+    }
     await recalcular(tx, os, { ator, conferirTeto: dados.precoUnit !== undefined, senhaDono: dados.senhaDono });
   });
   return buscar(id, ator);
@@ -603,6 +660,29 @@ export async function assumir(id: string, ator: UsuarioSessao) {
   return buscar(id, ator);
 }
 
+/**
+ * A lista das peças encomendadas foi mandada a uma autopeça (pelo WhatsApp):
+ * anota para quem e quando. O que essa autopeça não tiver volta a ser pedido
+ * a outra, do mesmo jeito; a linha só sai da lista quando a compra chega.
+ */
+export async function pedirPecas(id: string, dados: z.output<typeof pedirPecasSchema>, ator: UsuarioSessao) {
+  const fornecedor = await prisma.fornecedor.findUnique({ where: { id: dados.fornecedorId }, select: { id: true } });
+  if (!fornecedor) throw invalido('Autopeça não encontrada');
+
+  await prisma.$transaction(async (tx) => {
+    const os = await tx.ordemServico.findUnique({ where: { id }, select: { status: true } });
+    if (!os) throw naoEncontrado('Ordem de Serviço não encontrada');
+    if (os.status === 'CANCELADA') throw conflito('OS cancelada não tem peça a pedir');
+
+    const linhas = { id: { in: dados.itens }, osId: id, ...encomendaPendente };
+    if ((await tx.oSPeca.count({ where: linhas })) !== dados.itens.length) {
+      throw conflito('Alguma peça da lista já chegou ou saiu da OS. Abra a OS de novo e refaça a lista.');
+    }
+    await tx.oSPeca.updateMany({ where: linhas, data: { pedidoFornecedorId: dados.fornecedorId, pedidoEm: new Date() } });
+  });
+  return buscar(id, ator);
+}
+
 /** Cancela a OS e devolve ao estoque as peças que ela tinha baixado. */
 export async function cancelar(id: string, motivo: string, ator: UsuarioSessao) {
   await prisma.$transaction(async (tx) => {
@@ -650,6 +730,23 @@ export async function receber(id: string, dados: z.output<typeof receberOSSchema
   if (dados.prazo && restante === 0) throw invalido('Os pagamentos já cobrem o total — não sobrou nada para parcelar.');
   if (dados.prazo && dados.prazo.primeiroVencimento < hojeISO()) {
     throw invalido('O 1º vencimento não pode ser no passado.');
+  }
+
+  // RN-03: a peça encomendada entrou com preço estimado; o certo sai da nota da autopeça.
+  if (!dados.receberSemConferir) {
+    const aConferir = await prisma.oSPeca.findMany({
+      where: { osId: id, precoConferido: false },
+      include: { peca: { select: { nome: true } } },
+      orderBy: { id: 'asc' },
+    });
+    if (aConferir.length > 0) {
+      const detalhes: PrecoAConferirDTO[] = aConferir.map((l) => ({ nome: l.peca.nome, precoUnit: num(l.precoUnit) }));
+      throw conflito(
+        `${aConferir.length === 1 ? 'Uma peça está' : `${aConferir.length} peças estão`} com preço estimado, ainda sem a conferência do Dono pela nota da autopeça.`,
+        COD.PRECO_A_CONFERIR,
+        detalhes,
+      );
+    }
   }
 
   // RN-11.2: quem já tem parcela vencida não leva mais fiado sem alguém assumir.

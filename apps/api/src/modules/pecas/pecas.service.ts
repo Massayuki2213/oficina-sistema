@@ -7,6 +7,7 @@ import type {
   entradaEstoqueSchema,
   listarPecasQuery,
   movimentosQuery,
+  pecaRapidaSchema,
   pecaSchema,
 } from '@hermes/shared/schemas';
 import { prisma } from '../../lib/prisma.js';
@@ -42,6 +43,7 @@ export function paraPecaDTO(p: PecaComFornecedor, ator: UsuarioSessao): PecaDTO 
     ativo: p.ativo,
     // RN-02: chegou no mínimo (ou abaixo) — hora de comprar.
     estoqueBaixo: estoqueAtual <= estoqueMinimo,
+    precoADefinir: p.precoADefinir,
   };
 }
 
@@ -108,11 +110,36 @@ export async function criar(dados: z.output<typeof criarPecaSchema>, ator: Usuar
   return buscar(id, ator);
 }
 
+/**
+ * Peça que ainda não existe, cadastrada pelo balcão no meio do orçamento: só o
+ * nome. Nasce sem custo e sem preço de venda — a linha do orçamento leva um
+ * preço estimado, e o Dono acerta pela nota da autopeça. Se o nome já existe,
+ * é a mesma peça: devolve a que está cadastrada.
+ */
+export async function criarRapida(dados: z.output<typeof pecaRapidaSchema>, ator: UsuarioSessao) {
+  const existente = await prisma.peca.findFirst({
+    where: { nome: { equals: dados.nome, mode: 'insensitive' }, ativo: true },
+    select: { id: true },
+  });
+  if (existente) return buscar(existente.id, ator);
+
+  const p = await prisma.peca.create({
+    data: { nome: dados.nome, unidade: dados.unidade, precoCusto: 0, precoVenda: 0, precoADefinir: true },
+  });
+  return buscar(p.id, ator);
+}
+
 /** Edita o cadastro. A quantidade em estoque NÃO muda por aqui — só por movimento. */
 export async function atualizar(id: string, { versao, ...dados }: z.output<typeof pecaSchema>, ator: UsuarioSessao) {
   const r = await prisma.peca.updateMany({
     where: { id, ...naVersao(versao) },
-    data: { ...dados, margemPct: calcularMargem(dados.precoCusto, dados.precoVenda), ...proximaVersao },
+    data: {
+      ...dados,
+      margemPct: calcularMargem(dados.precoCusto, dados.precoVenda),
+      // O Dono deu preço de venda: a peça cadastrada só pelo nome deixa de estar "a definir".
+      ...(dados.precoVenda > 0 ? { precoADefinir: false } : {}),
+      ...proximaVersao,
+    },
   });
   if (r.count === 0) await falhaDeVersao('pecas', id, (await prisma.peca.count({ where: { id } })) > 0, 'Peça não encontrada');
   return buscar(id, ator);

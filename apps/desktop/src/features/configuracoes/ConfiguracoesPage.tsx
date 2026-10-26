@@ -10,6 +10,7 @@ import { useSessao } from '../acesso/sessao';
 import { Badge, BtnGhost, BtnPrimary, Campo, ErroAoCarregar, ErroFormulario, PageHeader, inputCls } from '../../components/ui';
 import { DadosOficina } from './DadosOficina';
 import { Equipe } from './Equipe';
+import { CatalogoInicial } from './CatalogoInicial';
 
 type Aba = 'conta' | 'oficina' | 'equipe' | 'backup';
 
@@ -45,7 +46,12 @@ export default function ConfiguracoesPage() {
       </div>
       <div className="max-w-5xl">
         {aba === 'conta' && <MinhaConta />}
-        {aba === 'oficina' && <DadosOficina />}
+        {aba === 'oficina' && (
+          <>
+            <CatalogoInicial />
+            <DadosOficina />
+          </>
+        )}
         {aba === 'equipe' && <Equipe />}
         {aba === 'backup' && <Backup />}
       </div>

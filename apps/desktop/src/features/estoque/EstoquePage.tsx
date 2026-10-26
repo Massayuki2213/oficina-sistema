@@ -7,6 +7,7 @@ import { buscarTodas, useListaPaginada, useParametroDeTela } from '../../api/lis
 import { useAvisos } from '../../lib/avisos';
 import { baixarCSV } from '../../lib/csv';
 import { useSessao } from '../acesso/sessao';
+import { CatalogoInicial } from '../configuracoes/CatalogoInicial';
 import {
   AcaoEditar,
   AcaoExcluir,
@@ -102,6 +103,8 @@ export default function EstoquePage() {
         </BtnGhost>
       </div>
 
+      {pode('configurarOficina') && !lista.busca && !baixo && lista.dados?.total === 0 && <CatalogoInicial />}
+
       <Painel>
         <table className="w-full">
           <thead>
@@ -137,7 +140,15 @@ export default function EstoquePage() {
                   </span>
                   <div className="text-[11px] text-grafite/40">mín. {formatarQtd(p.estoqueMinimo)}</div>
                 </td>
-                <td className={`${tdCls} text-right tabular-nums font-semibold`}>{brl(p.precoVenda)}</td>
+                <td className={`${tdCls} text-right tabular-nums font-semibold`}>
+                  {p.precoADefinir ? (
+                    <span className="text-amarelo font-bold text-xs" title="Cadastrada pelo balcão só com o nome: defina custo e preço de venda">
+                      a definir
+                    </span>
+                  ) : (
+                    brl(p.precoVenda)
+                  )}
+                </td>
                 {verCusto && <td className={`${tdCls} text-right tabular-nums text-grafite/60`}>{p.precoCusto != null ? brl(p.precoCusto) : '—'}</td>}
                 {verCusto && (
                   <td className={`${tdCls} text-right tabular-nums ${p.margemPct != null && p.margemPct < 0 ? 'text-vermelho font-bold' : 'text-grafite/60'}`}>

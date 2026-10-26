@@ -177,10 +177,24 @@ export type AdicionarPecaOSInput = z.input<typeof adicionarPecaOSSchema>;
 export const alterarPecaOSSchema = z.object({
   quantidade: quantidadePeca.optional(),
   precoUnit: dinheiro().optional(),
+  /** O Dono conferiu o preço estimado pela nota da autopeça e ele fica como está. */
+  conferirPreco: z.boolean().optional(),
   confirmarSemEstoque: z.boolean().default(false),
   senhaDono,
 });
 export type AlterarPecaOSInput = z.input<typeof alterarPecaOSSchema>;
+
+/** A lista de peças encomendadas que foi mandada a uma autopeça. */
+export const pedirPecasSchema = z.object({
+  fornecedorId: id('Escolha a autopeça'),
+  /** As linhas de peça da OS que foram na lista. */
+  itens: z
+    .array(z.string().trim().min(1))
+    .min(1, 'Marque ao menos uma peça')
+    .max(100, 'Itens demais')
+    .refine((ids) => new Set(ids).size === ids.length, 'Peça repetida na lista'),
+});
+export type PedirPecasInput = z.input<typeof pedirPecasSchema>;
 
 /** CANCELADA tem rota própria (pede motivo e devolve as peças ao estoque). */
 export const mudarStatusOSSchema = z.object({
@@ -213,6 +227,8 @@ export const receberOSSchema = z
       .optional(),
     /** RN-11.2: liberar fiado para quem está devendo é decisão consciente — fica na auditoria. */
     liberarFiado: z.boolean().default(false),
+    /** Receber com peça de preço estimado, sem o Dono conferir pela nota — fica na auditoria. */
+    receberSemConferir: z.boolean().optional(),
   })
   .refine((d) => d.pagamentos.length > 0 || !!d.prazo, {
     message: 'Informe como o cliente vai pagar',

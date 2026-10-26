@@ -219,7 +219,14 @@ function DetalheCompra({ id, onFechar }: { id: string; onFechar: () => void }) {
             <div className="border border-linha rounded-xl divide-y divide-linha">
               {c.itens.map((i) => (
                 <div key={i.id} className="flex items-center gap-3 px-3.5 py-2.5 text-sm">
-                  <span className="flex-1 min-w-0 truncate font-bold">{i.nome}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate font-bold">{i.nome}</span>
+                    {i.encomendas.length > 0 && (
+                      <span className="block text-xs text-grafite/55">
+                        encomenda da {i.encomendas.map((e) => `OS #${e.os.numero}`).join(', ')}
+                      </span>
+                    )}
+                  </span>
                   <span className="text-grafite/60 tabular-nums">
                     {formatarQtd(i.quantidade, i.unidade)} × {brl(i.custoUnit)}
                   </span>

@@ -33,8 +33,28 @@ const PERGUNTAS: Pergunta[] = [
   },
   {
     p: 'Faltou peça no estoque. E agora?',
-    r: 'O sistema avisa e pergunta se é para seguir mesmo assim (encomenda). Confirmando, a OS fica "aguardando peça". Quando a peça chegar, dê entrada em Estoque ou lance a compra — e retome a OS.',
+    r: 'O sistema avisa e pergunta se é para seguir mesmo assim (encomenda). Confirmando, a OS fica "aguardando peça" e a peça aparece como "a pedir". O Dono pede à autopeça pela própria OS e, quando a peça chegar, lança a compra. Aí é só retomar a OS.',
     para: 'balcao',
+  },
+  {
+    p: 'A peça não está cadastrada. Como coloco no orçamento?',
+    r: 'Na busca de peças, clique em "Cadastrar peça nova", confira o nome e digite um preço estimado. A peça entra no orçamento com esse valor e o Dono acerta o preço pela nota da autopeça antes de receber.',
+    para: 'balcao',
+  },
+  {
+    p: 'O sistema está sem serviços e peças. Preciso cadastrar tudo?',
+    r: 'Não. Em Configurações → Oficina, clique em "Carregar catálogo inicial": entram os serviços e as peças mais comuns, sem preço. A mão de obra é digitada em cada orçamento e a peça fica "a definir" até você acertar pela nota. Pode carregar de novo: nada é duplicado.',
+    para: 'financeiro',
+  },
+  {
+    p: 'Como peço as peças para a autopeça?',
+    r: 'Abra a OS: o aviso amarelo mostra as peças a pedir. Clique em "Pedir peças", escolha a autopeça e envie no WhatsApp (a lista vai sem os preços do cliente). O que ela não tiver, desmarque e mande o resto para outra do mesmo jeito. Quando a nota chegar, lance em Compras: o quadro "Peças encomendadas pelas OS" preenche a compra.',
+    para: 'financeiro',
+  },
+  {
+    p: 'Por que a OS mostra "preço estimado"?',
+    r: 'A peça foi encomendada depois do orçamento, então o preço era uma estimativa. Com a nota da autopeça na mão, corrija o preço da peça na OS ou, se estiver certo, clique em "conferido". Se alguém receber antes disso, o sistema pergunta e a decisão fica no Histórico.',
+    para: 'financeiro',
   },
   {
     p: 'Como recebo um pagamento dividido (parte PIX, parte fiado)?',

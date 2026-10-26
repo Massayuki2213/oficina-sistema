@@ -6,6 +6,7 @@ import { useAcao } from '../../api/acoes';
 import { useListaPaginada } from '../../api/lista';
 import { useAvisos } from '../../lib/avisos';
 import { useSessao } from '../acesso/sessao';
+import { CatalogoInicial } from '../configuracoes/CatalogoInicial';
 import {
   AcaoEditar,
   AcaoExcluir,
@@ -54,6 +55,8 @@ export default function ServicosPage() {
           </BtnPrimary>
         )}
       </PageHeader>
+
+      {pode('configurarOficina') && !lista.busca && lista.dados?.total === 0 && <CatalogoInicial />}
 
       <Painel>
         <table className="w-full">

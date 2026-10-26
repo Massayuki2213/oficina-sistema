@@ -10,7 +10,7 @@ import { pagina, paginar } from '../../lib/paginacao.js';
 import { fecharTotal, precificar } from '../../dominio/precificacao.js';
 import { darSaida, devolver, verificarFaltas } from '../../dominio/estoque.js';
 import { lancar } from '../../dominio/caixa.js';
-import { paraItemPeca } from '../ordens/ordens.mapper.js';
+import { paraItemPeca, selecaoPecaDoItem } from '../ordens/ordens.mapper.js';
 
 // ============================================================
 // Venda de balcão — a peça sai sem OS (o cliente leva e instala,
@@ -27,7 +27,7 @@ const incluirCompleto = {
   ...incluirResumo,
   usuario: { select: { nome: true } },
   itens: {
-    include: { peca: { select: { nome: true, unidade: true, precoVenda: true, estoqueAtual: true } } },
+    include: { peca: selecaoPecaDoItem },
     orderBy: { id: 'asc' },
   },
 } satisfies Prisma.VendaInclude;

@@ -1,8 +1,11 @@
-import { X, AlertTriangle, CheckSquare, Square } from 'lucide-react';
-import { brl, formatarQtd, type OrdemServicoDTO, type PecaDTO, type ServicoDTO, type UsuarioSessao } from '@hermes/shared';
+import { useState } from 'react';
+import { X, AlertTriangle, Check, CheckSquare, PackageCheck, PackageSearch, Plus, Square, Truck } from 'lucide-react';
+import { brl, formatarQtd, type ItemPecaOSDTO, type OrdemServicoDTO, type PecaDTO, type ServicoDTO, type UsuarioSessao } from '@hermes/shared';
 import { http } from '../../api/http';
 import { buscarPecas, buscarServicos } from '../../api/catalogo';
+import { dataBR } from '../../lib/format';
 import { BuscaSelect, DinheiroNoLugar, QuantidadeNoLugar, Secao, Vazio } from '../../components/ui';
+import { PecaRapida } from '../estoque/PecaRapida';
 import type { AcaoNaOS } from './api';
 
 // ============================================================
@@ -18,7 +21,10 @@ export function ItensDaOS({ os, usuario, executar, ocupado }: { os: OrdemServico
   // O mecânico lança e retira peça na OS dele; serviço e valores são do balcão.
   const mexeNasPecas = aberta && (p.atender || minha);
   const mexeNoPreco = aberta && p.darDesconto;
+  // Quem confere o preço pela nota da autopeça é o Dono (o mesmo que lança a compra).
+  const confereNota = aberta && p.alterarPrecoCusto;
   const aponta = os.status !== 'CANCELADA' && (p.atender || minha);
+  const [cadastrarPeca, setCadastrarPeca] = useState<string | null>(null);
 
   const base = `/ordens/${os.id}`;
 
@@ -46,7 +52,7 @@ export function ItensDaOS({ os, usuario, executar, ocupado }: { os: OrdemServico
               <div className="flex-1 min-w-[10rem]">
                 <div className={`font-bold text-sm ${s.concluido ? 'text-grafite/50 line-through decoration-grafite/30' : ''}`}>{s.nome}</div>
                 <div className="text-xs text-grafite/50">
-                  {s.precoUnit !== s.precoCatalogo && !os.garantia ? (
+                  {s.precoUnit !== s.precoCatalogo && s.precoCatalogo > 0 && !os.garantia ? (
                     <>
                       tabela <s>{brl(s.precoCatalogo)}</s>
                     </>
@@ -121,17 +127,35 @@ export function ItensDaOS({ os, usuario, executar, ocupado }: { os: OrdemServico
             <div key={pc.id} className="flex items-center gap-2 sm:gap-3 px-3 py-2 border-b border-linha last:border-0 flex-wrap sm:flex-nowrap">
               <div className="flex-1 min-w-[10rem]">
                 <div className="font-bold text-sm">{pc.nome}</div>
-                <div className="text-xs text-grafite/50">
-                  {pc.precoUnit !== pc.precoCatalogo ? (
-                    <>
-                      tabela <s>{brl(pc.precoCatalogo)}</s>
-                    </>
-                  ) : (
-                    `${brl(pc.precoUnit)} / ${pc.unidade}`
-                  )}
-                  {pc.estoqueAtual < 0 && (
-                    <span className="text-amarelo font-bold inline-flex items-center gap-0.5 ml-1.5">
-                      <AlertTriangle size={11} /> encomendar
+                <div className="text-xs text-grafite/50 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  <span>
+                    {pc.precoUnit !== pc.precoCatalogo && pc.precoCatalogo > 0 && !pc.precoADefinir ? (
+                      <>
+                        tabela <s>{brl(pc.precoCatalogo)}</s>
+                      </>
+                    ) : (
+                      `${brl(pc.precoUnit)} / ${pc.unidade}`
+                    )}
+                  </span>
+                  <SituacaoEncomenda pc={pc} />
+                  {!pc.precoConferido && (
+                    <span className="text-amarelo font-bold inline-flex items-center gap-0.5">
+                      <AlertTriangle size={11} /> preço estimado
+                      {confereNota && (
+                        <button
+                          type="button"
+                          disabled={ocupado}
+                          onClick={() =>
+                            void executar(() => http.patch<OrdemServicoDTO>(`${base}/pecas/${pc.id}`, { conferirPreco: true }), {
+                              sucesso: `Preço de ${pc.nome} conferido.`,
+                            })
+                          }
+                          title="O preço estimado bate com a nota: marcar como conferido"
+                          className="ml-1 inline-flex items-center gap-0.5 text-verde hover:underline"
+                        >
+                          <Check size={11} /> conferido
+                        </button>
+                      )}
                     </span>
                   )}
                 </div>
@@ -189,11 +213,67 @@ export function ItensDaOS({ os, usuario, executar, ocupado }: { os: OrdemServico
                     sucesso: `${x.nome} lançada — baixou 1 ${x.unidade} do estoque.`,
                   })
                 }
+                rodape={
+                  balcao
+                    ? (termo, fechar) => (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            fechar();
+                            setCadastrarPeca(termo);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm font-bold text-laranja hover:bg-white inline-flex items-center gap-1.5"
+                        >
+                          <Plus size={14} /> Cadastrar peça nova{termo ? ` "${termo}"` : ''}
+                        </button>
+                      )
+                    : undefined
+                }
               />
             </div>
           )}
         </div>
       </Secao>
+
+      {cadastrarPeca !== null && (
+        <PecaRapida
+          nomeInicial={cadastrarPeca}
+          onFechar={() => setCadastrarPeca(null)}
+          onSalvo={(x, estimado) => {
+            setCadastrarPeca(null);
+            void executar((e) => http.post<OrdemServicoDTO>(`${base}/pecas`, { pecaId: x.id, quantidade: 1, precoUnit: estimado, ...e }), {
+              sucesso: `${x.nome} lançada com preço estimado.`,
+            });
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/** Em que pé está a encomenda da peça (RN-03): a pedir, pedida a uma autopeça, ou chegou. */
+function SituacaoEncomenda({ pc }: { pc: ItemPecaOSDTO }) {
+  if (pc.chegou) {
+    const { compra, fornecedor, numeroNota } = pc.chegou;
+    return (
+      <span className="text-verde font-bold inline-flex items-center gap-0.5" title={`Chegou em ${dataBR(pc.chegou.data)}`}>
+        <PackageCheck size={11} /> chegou: compra #{compra.numero} — {fornecedor}
+        {numeroNota ? `, NF ${numeroNota}` : ''}
+      </span>
+    );
+  }
+  if (!pc.aPedir) return null;
+  if (pc.pedido) {
+    return (
+      <span className="text-azul font-bold inline-flex items-center gap-0.5">
+        <Truck size={11} /> pedida a {pc.pedido.fornecedor.nome} em {dataBR(pc.pedido.em)}
+      </span>
+    );
+  }
+  return (
+    <span className="text-amarelo font-bold inline-flex items-center gap-0.5">
+      <PackageSearch size={11} /> a pedir: {formatarQtd(pc.encomenda, pc.unidade)}
+    </span>
   );
 }
