@@ -28,7 +28,7 @@ export default function OrcamentosPage() {
   const itens = lista.dados?.itens ?? [];
 
   const [aberto, setAberto] = useState<string | null>(null);
-  const [novo, setNovo] = useState<{ carro?: string } | null>(null);
+  const [novo, setNovo] = useState<{ carro?: string; cliente?: string; visita?: string } | null>(null);
   const [aprovando, setAprovando] = useState<OrcamentoDTO | null>(null);
 
   // /orcamentos?novo=1&carro=<id> (busca por placa) e /orcamentos?abrir=<id>.
@@ -36,7 +36,7 @@ export default function OrcamentosPage() {
   const [abrirParam, limparAbrir] = useParametroDeTela('abrir');
   useEffect(() => {
     if (novoParam) {
-      setNovo({ carro: params.get('carro') ?? undefined });
+      setNovo({ carro: params.get('carro') ?? undefined, cliente: params.get('cliente') ?? undefined, visita: params.get('visita') ?? undefined });
       limparNovo();
     }
   }, [novoParam, limparNovo, params]);
@@ -162,6 +162,8 @@ export default function OrcamentosPage() {
       {novo && (
         <FormOrcamento
           carroInicial={novo.carro}
+          clienteInicial={novo.cliente}
+          visitaId={novo.visita}
           onFechar={() => setNovo(null)}
           onSalvo={(o) => {
             setNovo(null);

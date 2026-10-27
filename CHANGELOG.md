@@ -6,6 +6,17 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões
 
 ### Adicionado
 
+- **Quadro do dia na Agenda** (Semana / Dia): os horários do dia em três colunas, A chegar, Chegou
+  e Faltou, com um resumo de quantos são; cada cartão mostra o cliente, o telefone, o carro inteiro
+  (placa, marca, modelo e ano) e a observação. Ações no cartão: Chegou, Confirmado, Faltou e
+  lembrete no WhatsApp. "Chegou" abre o orçamento (ou a OS) já com o cliente e o carro; ao salvar,
+  o horário passa a "chegou" e mostra o número do atendimento. Na semana, o dia mostra quantos
+  horários tem e abre o quadro; o Início leva direto ao quadro de hoje.
+
+## [1.0.0-rc.4] — 2026-10-26
+
+### Adicionado
+
 - **Categoria da peça** e filtro por categoria no Estoque (com "Sem categoria", para achar o que
   falta organizar); a busca também acha pela categoria. A categoria é texto livre, com 14 sugeridas
   (Freios, Suspensão, Óleos e fluidos, Iluminação...). As peças do catálogo inicial já entram com a

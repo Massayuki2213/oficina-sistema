@@ -320,6 +320,7 @@ model Orcamento {
   servicos OrcamentoServico[]
   pecas    OrcamentoPeca[]
   ordem    OrdemServico?
+  visita   Visita?
 
   @@index([clienteId])
   @@index([status, validade])
@@ -397,6 +398,7 @@ model OrdemServico {
   lancamentos   LancamentoCaixa[]
   contasReceber ContaReceber[]
   movimentos    MovimentoEstoque[]
+  visita        Visita?
 
   @@index([status])
   @@index([clienteId])
@@ -508,9 +510,15 @@ model Visita {
   tipo        TipoVisita   @default(REVISAO)
   status      StatusVisita @default(AGENDADA)
   observacoes String?
+  // O atendimento que nasceu do horário (o cliente chegou): o orçamento da
+  // avaliação ou a OS direta. A agenda do dia mostra o número.
+  orcamentoId String?      @unique @map("orcamento_id")
+  osId        String?      @unique @map("os_id")
 
-  cliente Cliente @relation(fields: [clienteId], references: [id])
-  carro   Carro?  @relation(fields: [carroId], references: [id])
+  cliente   Cliente       @relation(fields: [clienteId], references: [id])
+  carro     Carro?        @relation(fields: [carroId], references: [id])
+  orcamento Orcamento?    @relation(fields: [orcamentoId], references: [id], onDelete: SetNull)
+  os        OrdemServico? @relation(fields: [osId], references: [id], onDelete: SetNull)
 
   @@index([dataHora])
   @@map("visitas")

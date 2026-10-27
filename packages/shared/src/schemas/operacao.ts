@@ -83,6 +83,8 @@ export const orcamentoSchema = z
     observacoes: textoOpcional(1000),
     servicos: listaServicos,
     pecas: listaPecas,
+    /** O horário da agenda de onde o orçamento nasceu (o cliente chegou). Só na criação. */
+    visitaId: idOpcional,
     versao,
   })
   .refine((d) => d.servicos.length + d.pecas.length > 0, {
@@ -138,6 +140,8 @@ export const criarOSSchema = z.object({
   servicos: listaServicos,
   pecas: listaPecas,
   confirmarSemEstoque: z.boolean().default(false),
+  /** O horário da agenda de onde a OS nasceu (o cliente chegou). */
+  visitaId: idOpcional,
 });
 export type CriarOSInput = z.input<typeof criarOSSchema>;
 

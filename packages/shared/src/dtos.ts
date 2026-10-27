@@ -498,7 +498,10 @@ export interface VisitaDTO {
   status: StatusVisita;
   observacoes: string | null;
   cliente: ContatoDTO;
-  carro: { id: ID; placa: string; modelo: string } | null;
+  carro: { id: ID; placa: string; marca: string; modelo: string; ano: number | null } | null;
+  /** O atendimento que nasceu do horário: o orçamento (e a OS dele, se aprovado) ou a OS direta. */
+  orcamento: (Ref & { os: Ref | null }) | null;
+  os: Ref | null;
 }
 
 // ---- Caixa -----------------------------------------------------------------

@@ -43,7 +43,7 @@ export function useParametroDeTela(nome: string): [string | null, () => void, UR
         const novo = new URLSearchParams(p);
         novo.delete(nome);
         // Parâmetros que acompanham a abertura (ex.: &carro=) saem junto.
-        for (const extra of ['carro', 'placa', 'cliente']) novo.delete(extra);
+        for (const extra of ['carro', 'placa', 'cliente', 'visita']) novo.delete(extra);
         return novo;
       },
       { replace: true },

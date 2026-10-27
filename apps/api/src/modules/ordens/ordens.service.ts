@@ -39,6 +39,7 @@ import { lancar } from '../../dominio/caixa.js';
 import { gerarParcelas, situacaoFiado } from '../../dominio/fiado.js';
 import { getOficina } from '../oficina/oficina.service.js';
 import { incluirParcela, paraParcela } from '../contas/contas.mapper.js';
+import { ligarAoAtendimento } from '../agenda/agenda.service.js';
 import { incluirItens, incluirOSResumo, incluirPecasDaOS, paraItemPecaOS, paraItemServico, paraOSResumo } from './ordens.mapper.js';
 
 // ============================================================
@@ -293,8 +294,8 @@ export async function criar(dados: z.output<typeof criarOSSchema>, ator: Usuario
     );
   }
 
-  const os = await prisma.$transaction((tx) =>
-    abrirOS(tx, {
+  const os = await prisma.$transaction(async (tx) => {
+    const aberta = await abrirOS(tx, {
       clienteId: dados.clienteId,
       carroId: dados.carroId,
       mecanicoId: dados.mecanicoId ?? null,
@@ -306,8 +307,11 @@ export async function criar(dados: z.output<typeof criarOSSchema>, ator: Usuario
       pecas: precos.pecas.map((p) => ({ pecaId: p.pecaId, quantidade: p.quantidade, precoUnit: p.precoUnit })),
       aguardandoPeca: faltas.length > 0,
       usuarioId: ator.id,
-    }),
-  );
+    });
+    // Nasceu de um horário da agenda: o cliente chegou e o serviço já está autorizado.
+    if (dados.visitaId) await ligarAoAtendimento(tx, dados.visitaId, { clienteId: dados.clienteId, osId: aberta.id });
+    return aberta;
+  });
   return buscar(os.id, ator);
 }
 

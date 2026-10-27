@@ -98,7 +98,7 @@ export default function Painel() {
         <Link to="/ordens" className="block rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-laranja">
           <Kpi label="Prontos para entregar" valor={prontas.data ?? '—'} icon={CheckCircle2} cor="bg-verde-bg text-verde" sub="concluídos, aguardando o cliente" />
         </Link>
-        <Link to="/agenda" className="block rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-laranja">
+        <Link to={`/agenda?dia=${hoje}`} className="block rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-laranja">
           <Kpi label="Agenda de hoje" valor={agenda.data ? visitas.length : '—'} icon={CalendarDays} cor="bg-amarelo-bg text-amarelo" sub="horários marcados" />
         </Link>
         {pode('verFinanceiro') ? (
@@ -362,7 +362,7 @@ function AgendaDeHoje({ visitas, carregando }: { visitas: VisitaDTO[]; carregand
   const oficina = useOficina();
   const { pode } = useSessao();
   return (
-    <Cartao titulo="Agenda de hoje" icone={CalendarDays} acao={<Link to="/agenda" className="text-xs font-bold text-laranja hover:underline">Abrir agenda</Link>}>
+    <Cartao titulo="Agenda de hoje" icone={CalendarDays} acao={<Link to={`/agenda?dia=${hojeISO()}`} className="text-xs font-bold text-laranja hover:underline">Ver o dia</Link>}>
       {carregando && <div className="px-4 py-6 text-center text-sm text-grafite/40">Carregando...</div>}
       {!carregando && visitas.length === 0 && <div className="px-4 py-8 text-center text-sm text-grafite/40">Nenhum horário marcado para hoje.</div>}
       {visitas.map((v) => (

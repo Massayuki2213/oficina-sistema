@@ -37,6 +37,11 @@ const PERGUNTAS: Pergunta[] = [
     para: 'balcao',
   },
   {
+    p: 'Como vejo quem vem hoje e qual carro?',
+    r: 'Na Agenda, clique em "Dia" (ou no nome do dia, na semana). Os horários ficam em três colunas: A chegar, Chegou e Faltou, com o carro e a placa de cada um. Quando o cliente chegar, clique em "Chegou" → "Fazer orçamento": o orçamento já abre com o cliente e o carro, e o horário passa a mostrar o número dele.',
+    para: 'balcao',
+  },
+  {
     p: 'A peça não está cadastrada. Como coloco no orçamento?',
     r: 'Na busca de peças, clique em "Cadastrar peça nova", confira o nome e digite um preço estimado. A peça entra no orçamento com esse valor e o Dono acerta o preço pela nota da autopeça antes de receber.',
     para: 'balcao',

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Zap, UserRound, FileText } from 'lucide-react';
-import { brl, type FichaVeiculoDTO, type OrcamentoDTO } from '@hermes/shared';
+import { brl, type ClienteFichaDTO, type FichaVeiculoDTO, type OrcamentoDTO } from '@hermes/shared';
 import { ApiError, http, mensagemDeErro } from '../../api/http';
 import { foiDesistencia, useConfirmacoes } from '../../api/acoes';
 import { useOficina } from '../../api/catalogo';
@@ -25,11 +25,17 @@ type Modo = 'RAPIDO' | 'COMPLETO';
 export function FormOrcamento({
   orc,
   carroInicial,
+  clienteInicial,
+  visitaId,
   onFechar,
   onSalvo,
 }: {
   orc?: OrcamentoDTO;
   carroInicial?: string;
+  /** Sem carro (horário marcado sem veículo): já chega com o cliente. */
+  clienteInicial?: string;
+  /** O horário da agenda de onde o orçamento nasce (o cliente chegou). */
+  visitaId?: string;
   onFechar: () => void;
   onSalvo: (o: OrcamentoDTO) => void;
 }) {
@@ -39,7 +45,7 @@ export function FormOrcamento({
   const avisos = useAvisos();
   const confirmar = useConfirmacoes();
 
-  const [modo, setModo] = useState<Modo>(orc ? (orc.clienteId ? 'COMPLETO' : 'RAPIDO') : carroInicial ? 'COMPLETO' : 'RAPIDO');
+  const [modo, setModo] = useState<Modo>(orc ? (orc.clienteId ? 'COMPLETO' : 'RAPIDO') : carroInicial || clienteInicial ? 'COMPLETO' : 'RAPIDO');
   const [cliente, setCliente] = useState<ClienteEscolhido | null>(orc?.cliente ? { ...orc.cliente } : null);
   const [veiculoId, setVeiculoId] = useState<string | null>(orc?.carroId ?? null);
   const [contatoNome, setContatoNome] = useState(orc?.contatoNome ?? '');
@@ -65,6 +71,16 @@ export function FormOrcamento({
     setVeiculoId((atual) => atual ?? v.id);
   }, [inicial.data]);
 
+  const clienteDoHorario = useQuery({
+    queryKey: ['clientes', clienteInicial],
+    queryFn: () => http.get<ClienteFichaDTO>(`/clientes/${clienteInicial}`),
+    enabled: !!clienteInicial && !carroInicial && !orc,
+  });
+  useEffect(() => {
+    const c = clienteDoHorario.data;
+    if (c) setCliente((atual) => atual ?? { id: c.id, nome: c.nome, telefone: c.telefone, whatsapp: c.whatsapp });
+  }, [clienteDoHorario.data]);
+
   const totais = calcularTotais(itens, desconto);
 
   async function enviar() {
@@ -88,6 +104,7 @@ export function FormOrcamento({
       desconto: Number(desconto || 0),
       observacoes: observacoes.trim() || null,
       ...itensParaEnvio(itens),
+      ...(orc ? {} : { visitaId: visitaId ?? null }),
     };
 
     setEnviando(true);
@@ -96,7 +113,7 @@ export function FormOrcamento({
         orc ? http.put<OrcamentoDTO>(`/orcamentos/${orc.id}`, { ...corpo, ...x, versao: orc.versao }) : http.post<OrcamentoDTO>('/orcamentos', { ...corpo, ...x }),
       );
       qc.setQueryData(['orcamentos', salvo.id], salvo);
-      await qc.invalidateQueries({ queryKey: ['orcamentos'] });
+      await Promise.all([qc.invalidateQueries({ queryKey: ['orcamentos'] }), qc.invalidateQueries({ queryKey: ['agenda'] })]);
       avisos.sucesso(orc ? `Orçamento #${salvo.numero} atualizado.` : `Orçamento #${salvo.numero} criado — ${brl(salvo.total)}.`);
       onSalvo(salvo);
     } catch (err) {

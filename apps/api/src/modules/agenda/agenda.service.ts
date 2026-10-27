@@ -9,7 +9,9 @@ import { intervalo } from '../../lib/datas.js';
 
 const incluirRel = {
   cliente: { select: { id: true, nome: true, telefone: true, whatsapp: true } },
-  carro: { select: { id: true, placa: true, modelo: true } },
+  carro: { select: { id: true, placa: true, marca: true, modelo: true, ano: true } },
+  orcamento: { select: { id: true, numero: true, ordem: { select: { id: true, numero: true } } } },
+  os: { select: { id: true, numero: true } },
 } satisfies Prisma.VisitaInclude;
 
 type VisitaCompleta = Prisma.VisitaGetPayload<{ include: typeof incluirRel }>;
@@ -24,7 +26,34 @@ function paraDTO(v: VisitaCompleta): VisitaDTO {
     observacoes: v.observacoes,
     cliente: v.cliente,
     carro: v.carro,
+    orcamento: v.orcamento ? { id: v.orcamento.id, numero: v.orcamento.numero, os: v.orcamento.ordem } : null,
+    os: v.os,
   };
+}
+
+/**
+ * O cliente do horário chegou e o balcão abriu o atendimento a partir dele:
+ * o horário vira "realizado" e guarda o orçamento (ou a OS) — o quadro do dia
+ * mostra o número. Horário que já tem um atendimento desse tipo fica com o
+ * primeiro (clicou duas vezes, não troca).
+ */
+export async function ligarAoAtendimento(
+  tx: Prisma.TransactionClient,
+  visitaId: string,
+  alvo: { clienteId?: string | null; orcamentoId?: string; osId?: string },
+) {
+  const visita = await tx.visita.findUnique({ where: { id: visitaId } });
+  if (!visita) throw invalido('Horário da agenda não encontrado');
+  if (alvo.clienteId && visita.clienteId !== alvo.clienteId) throw invalido('Esse horário da agenda é de outro cliente');
+
+  await tx.visita.update({
+    where: { id: visitaId },
+    data: {
+      ...(visita.status === 'AGENDADA' || visita.status === 'CONFIRMADA' ? { status: 'REALIZADA' } : {}),
+      ...(alvo.orcamentoId && !visita.orcamentoId ? { orcamentoId: alvo.orcamentoId } : {}),
+      ...(alvo.osId && !visita.osId ? { osId: alvo.osId } : {}),
+    },
+  });
 }
 
 /**

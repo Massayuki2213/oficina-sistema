@@ -34,7 +34,7 @@ export default function OrdensPage() {
   const itens = lista.dados?.itens ?? [];
 
   const [aberta, setAberta] = useState<string | null>(null);
-  const [nova, setNova] = useState<{ carro?: string } | null>(null);
+  const [nova, setNova] = useState<{ carro?: string; visita?: string } | null>(null);
 
   // Outras telas mandam para cá: /ordens?abrir=<id> e /ordens?nova=1&carro=<id>.
   const [abrirParam, limparAbrir] = useParametroDeTela('abrir');
@@ -47,7 +47,7 @@ export default function OrdensPage() {
   }, [abrirParam, limparAbrir]);
   useEffect(() => {
     if (novaParam && pode('atender')) {
-      setNova({ carro: params.get('carro') ?? undefined });
+      setNova({ carro: params.get('carro') ?? undefined, visita: params.get('visita') ?? undefined });
       limparNova();
     }
   }, [novaParam, limparNova, params, pode]);
@@ -203,6 +203,7 @@ export default function OrdensPage() {
       {nova && (
         <NovaOS
           carroInicial={nova.carro}
+          visitaId={nova.visita}
           onFechar={() => setNova(null)}
           onCriada={(os) => {
             setNova(null);

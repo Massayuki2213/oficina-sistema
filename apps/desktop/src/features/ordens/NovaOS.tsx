@@ -26,11 +26,14 @@ const PREVISOES = [
 
 export function NovaOS({
   carroInicial,
+  visitaId,
   onFechar,
   onCriada,
   onAbrirExistente,
 }: {
   carroInicial?: string;
+  /** O horário da agenda de onde a OS nasce (o cliente chegou). */
+  visitaId?: string;
   onFechar: () => void;
   onCriada: (os: OrdemServicoDTO) => void;
   onAbrirExistente: (id: string) => void;
@@ -94,12 +97,13 @@ export function NovaOS({
       dataPrevista: deDataHoraLocal(previsao),
       desconto: Number(desconto || 0),
       ...itensParaEnvio(itens),
+      visitaId: visitaId ?? null,
     };
 
     setEnviando(true);
     try {
       const os = await confirmar((x) => http.post<OrdemServicoDTO>('/ordens', { ...corpo, ...x }));
-      await Promise.all([['ordens'], ['pecas'], ['alertas'], ['carros']].map((queryKey) => qc.invalidateQueries({ queryKey })));
+      await Promise.all([['ordens'], ['pecas'], ['alertas'], ['carros'], ['agenda']].map((queryKey) => qc.invalidateQueries({ queryKey })));
       avisos.sucesso(`OS #${os.numero} aberta.${os.status === 'AGUARDANDO_PECA' ? ' Ficou aguardando peça.' : ''}`);
       onCriada(os);
     } catch (err) {

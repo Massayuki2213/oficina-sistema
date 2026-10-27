@@ -8,6 +8,7 @@ import { CORES_STATUS_VISITA, LABEL_STATUS_VISITA, LABEL_TIPO_VISITA, horaBR, pa
 import { useSessao } from '../acesso/sessao';
 import { Badge, BtnGhost, BtnPrimary, ErroAoCarregar, PageHeader } from '../../components/ui';
 import { FormVisita } from './FormVisita';
+import { QuadroDoDia } from './QuadroDoDia';
 
 /** Segunda-feira da semana de `d`. */
 function inicioDaSemana(d: Date) {
@@ -18,18 +19,43 @@ function inicioDaSemana(d: Date) {
 
 const somarDias = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
+/** "2026-10-27" → a data local (sem o fuso puxar para o dia anterior). */
+const deDataISO = (s: string) => {
+  const [a, m, d] = s.split('-').map(Number);
+  return new Date(a, m - 1, d);
+};
+
+type Modo = 'semana' | 'dia';
+
 export default function AgendaPage() {
   const { pode } = useSessao();
-  const [semana, setSemana] = useState(() => inicioDaSemana(new Date()));
+  // O dia em foco: na semana, a semana dele; no modo dia, ele mesmo.
+  const [modo, setModo] = useState<Modo>('semana');
+  const [foco, setFoco] = useState(() => new Date());
   const [aberta, setAberta] = useState<VisitaDTO | 'nova' | null>(null);
   const [diaNovo, setDiaNovo] = useState<string | undefined>();
 
-  const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => somarDias(semana, i)), [semana]);
-  const de = paraDataISO(dias[0]);
-  const ate = paraDataISO(dias[6]);
+  const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => somarDias(inicioDaSemana(foco), i)), [foco]);
+  const de = modo === 'dia' ? paraDataISO(foco) : paraDataISO(dias[0]);
+  const ate = modo === 'dia' ? paraDataISO(foco) : paraDataISO(dias[6]);
   const hoje = paraDataISO(new Date());
 
   const consulta = useQuery({ queryKey: ['agenda', de, ate], queryFn: () => http.get<VisitaDTO[]>('/agenda', { de, ate }) });
+
+  const abrirDia = (d: Date) => {
+    setFoco(d);
+    setModo('dia');
+  };
+
+  // /agenda?dia=AAAA-MM-DD (vindo do painel): abre direto o quadro do dia.
+  const [diaParam, limparDia] = useParametroDeTela('dia');
+  useEffect(() => {
+    if (diaParam && /^\d{4}-\d{2}-\d{2}$/.test(diaParam)) {
+      setFoco(deDataISO(diaParam));
+      setModo('dia');
+      limparDia();
+    }
+  }, [diaParam, limparDia]);
 
   const [novaParam, limparNova] = useParametroDeTela('nova');
   useEffect(() => {
@@ -49,21 +75,44 @@ export default function AgendaPage() {
     return m;
   }, [consulta.data]);
 
-  const rotuloSemana = `${dias[0].toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} a ${dias[6].toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })}`.replace(/\./g, '');
+  const rotulo =
+    modo === 'dia'
+      ? foco.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+      : `${dias[0].toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} a ${dias[6].toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        })}`.replace(/\./g, '');
+  const passo = modo === 'dia' ? 1 : 7;
 
   return (
     <div>
-      <PageHeader title="Agenda" subtitle={rotuloSemana}>
+      <PageHeader title="Agenda" subtitle={rotulo}>
+        <div className="flex items-center gap-1 bg-white border border-linha rounded-xl p-1" role="tablist" aria-label="Ver por">
+          {(
+            [
+              ['semana', 'Semana'],
+              ['dia', 'Dia'],
+            ] as const
+          ).map(([m, r]) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={modo === m}
+              onClick={() => setModo(m)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-bold transition ${modo === m ? 'bg-petroleo text-white shadow-sm' : 'text-grafite/60 hover:bg-fundo'}`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-1">
-          <BtnGhost onClick={() => setSemana((s) => somarDias(s, -7))} titulo="Semana anterior" className="!px-3">
+          <BtnGhost onClick={() => setFoco((f) => somarDias(f, -passo))} titulo={modo === 'dia' ? 'Dia anterior' : 'Semana anterior'} className="!px-3">
             <ChevronLeft size={16} />
           </BtnGhost>
-          <BtnGhost onClick={() => setSemana(inicioDaSemana(new Date()))}>Esta semana</BtnGhost>
-          <BtnGhost onClick={() => setSemana((s) => somarDias(s, 7))} titulo="Próxima semana" className="!px-3">
+          <BtnGhost onClick={() => setFoco(new Date())}>{modo === 'dia' ? 'Hoje' : 'Esta semana'}</BtnGhost>
+          <BtnGhost onClick={() => setFoco((f) => somarDias(f, passo))} titulo={modo === 'dia' ? 'Próximo dia' : 'Próxima semana'} className="!px-3">
             <ChevronRight size={16} />
           </BtnGhost>
         </div>
@@ -71,7 +120,7 @@ export default function AgendaPage() {
           <BtnPrimary
             icone={Plus}
             onClick={() => {
-              setDiaNovo(undefined);
+              setDiaNovo(modo === 'dia' && paraDataISO(foco) >= hoje ? paraDataISO(foco) : undefined);
               setAberta('nova');
             }}
           >
@@ -82,6 +131,8 @@ export default function AgendaPage() {
 
       {consulta.error ? (
         <ErroAoCarregar erro={consulta.error} onTentar={() => void consulta.refetch()} />
+      ) : modo === 'dia' ? (
+        <QuadroDoDia visitas={consulta.data ?? []} carregando={consulta.isPending} onAbrir={setAberta} />
       ) : (
         <div className="grid md:grid-cols-7 gap-3">
           {dias.map((d) => {
@@ -95,10 +146,16 @@ export default function AgendaPage() {
                 className={`bg-white rounded-2xl border shadow-sm flex flex-col min-h-[8rem] ${ehHoje ? 'border-laranja' : 'border-linha'} ${passado ? 'opacity-75' : ''}`}
               >
                 <header className="flex items-center justify-between px-3 py-2 border-b border-linha">
-                  <span className={`text-xs font-bold uppercase tracking-wide ${ehHoje ? 'text-laranja' : 'text-grafite/50'}`}>
+                  <button
+                    type="button"
+                    onClick={() => abrirDia(d)}
+                    title="Ver o dia inteiro"
+                    className={`text-xs font-bold uppercase tracking-wide hover:underline ${ehHoje ? 'text-laranja' : 'text-grafite/50'}`}
+                  >
                     {d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}{' '}
                     <span className="text-petroleo text-sm">{d.getDate()}</span>
-                  </span>
+                    {lista.length > 0 && <span className="ml-1.5 normal-case font-semibold text-grafite/45">({lista.length})</span>}
+                  </button>
                   {pode('atender') && !passado && (
                     <button
                       type="button"

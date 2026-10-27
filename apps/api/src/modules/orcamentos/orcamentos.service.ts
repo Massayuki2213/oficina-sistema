@@ -18,6 +18,7 @@ import { verificarFaltas } from '../../dominio/estoque.js';
 import { getOficina } from '../oficina/oficina.service.js';
 import { incluirItens, incluirOSResumo, paraItemPeca, paraItemServico, paraOSResumo } from '../ordens/ordens.mapper.js';
 import { abrirOS, validarMecanico, validarVeiculoDoCliente } from '../ordens/ordens.service.js';
+import { ligarAoAtendimento } from '../agenda/agenda.service.js';
 
 type DadosOrcamento = z.output<typeof orcamentoSchema>;
 
@@ -167,9 +168,14 @@ async function montar(dados: DadosOrcamento, ator: UsuarioSessao) {
 
 export async function criar(dados: DadosOrcamento, ator: UsuarioSessao): Promise<OrcamentoDTO> {
   const { campos, servicos, pecas } = await montar(dados, ator);
-  const o = await prisma.orcamento.create({
-    data: { ...campos, servicos: { create: servicos }, pecas: { create: pecas } },
-    include: incluirCompleto,
+  const o = await prisma.$transaction(async (tx) => {
+    const criado = await tx.orcamento.create({
+      data: { ...campos, servicos: { create: servicos }, pecas: { create: pecas } },
+      include: incluirCompleto,
+    });
+    // Nasceu de um horário da agenda: o cliente chegou para a avaliação.
+    if (dados.visitaId) await ligarAoAtendimento(tx, dados.visitaId, { clienteId: dados.clienteId, orcamentoId: criado.id });
+    return criado;
   });
   return paraDTO(o);
 }

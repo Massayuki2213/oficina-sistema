@@ -111,7 +111,7 @@ export function FormVisita({ visita, diaInicial, onFechar }: { visita: VisitaDTO
                 ]}
               />
               {visita.carro && pode('atender') && (
-                <BtnGhost icone={ClipboardList} onClick={() => navegar(`/ordens?nova=1&carro=${visita.carro!.id}`)}>
+                <BtnGhost icone={ClipboardList} onClick={() => navegar(`/ordens?nova=1&carro=${visita.carro!.id}&visita=${visita.id}`)}>
                   Abrir OS
                 </BtnGhost>
               )}
